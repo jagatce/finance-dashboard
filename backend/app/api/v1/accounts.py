@@ -89,6 +89,20 @@ def delete_account(account_id: str, db: Session = Depends(get_db)):
 
 @router.post("/snapshots/", response_model=SnapshotOut)
 def add_snapshot(snapshot: SnapshotCreate, db: Session = Depends(get_db)):
+    # Upsert — same account + same date = update balance, don't duplicate
+    existing = db.query(BalanceSnapshot).filter(
+        BalanceSnapshot.account_id == snapshot.account_id,
+        BalanceSnapshot.snapshot_date == snapshot.snapshot_date
+    ).first()
+
+    if existing:
+        existing.balance    = snapshot.balance
+        existing.as_of_date = snapshot.as_of_date
+        existing.notes      = snapshot.notes
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     db_snapshot = BalanceSnapshot(**snapshot.model_dump())
     db.add(db_snapshot)
     db.commit()
