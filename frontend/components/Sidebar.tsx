@@ -10,39 +10,40 @@ const nav = [
   {
     label: "Overview",
     items: [
-      { href: "/", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/networth", label: "Net Worth", icon: TrendingUp },
+      { href: "/",         label: "Dashboard",    icon: LayoutDashboard },
+      { href: "/networth", label: "Net Worth",     icon: TrendingUp },
+      { href: "/balances", label: "Update Balances", icon: DollarSign },
     ],
   },
   {
     label: "Assets",
     items: [
-      { href: "/accounts/cash", label: "Cash & Equivalents", icon: Wallet },
-      { href: "/accounts/taxable", label: "Investments", icon: BarChart3 },
-      { href: "/accounts/retirement", label: "Retirement", icon: PiggyBank },
-      { href: "/accounts/hsa", label: "HSA", icon: Shield },
-      { href: "/accounts/alternative", label: "Alternatives", icon: TrendingUp },
+      { href: "/accounts/category/cash",        label: "Cash & Equivalents", icon: Wallet },
+      { href: "/accounts/category/taxable",     label: "Investments",        icon: BarChart3 },
+      { href: "/accounts/category/retirement",  label: "Retirement",         icon: PiggyBank },
+      { href: "/accounts/category/hsa",         label: "HSA",                icon: Shield },
+      { href: "/accounts/category/alternative", label: "Alternatives",       icon: TrendingUp },
+      { href: "/accounts/category/manual",      label: "Manual Holdings",    icon: Wallet },
     ],
   },
   {
     label: "Liabilities",
     items: [
-      { href: "/accounts/credit_card", label: "Credit Cards", icon: CreditCard },
-      { href: "/accounts/loan", label: "Loans", icon: Wallet },
+      { href: "/accounts/category/credit_card", label: "Credit Cards", icon: CreditCard },
+      { href: "/accounts/category/loan",        label: "Loans",        icon: Wallet },
     ],
   },
   {
     label: "Planning",
     items: [
       { href: "/insurance", label: "Insurance", icon: Shield },
-      { href: "/spending", label: "Spending", icon: BarChart3 },
-      { href: "/reviews", label: "Reviews", icon: BarChart3 },
+      { href: "/spending",  label: "Spending",  icon: BarChart3 },
+      { href: "/reviews",   label: "Reviews",   icon: BarChart3 },
     ],
   },
   {
     label: "System",
     items: [
-      { href: "/balances", label: "Update Balances", icon: DollarSign },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },

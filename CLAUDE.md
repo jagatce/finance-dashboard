@@ -16,7 +16,7 @@ SQLite (SQLCipher encrypted). No cloud, no external services.
 cd ~/finance-dashboard/backend
 uv run uvicorn main:app --reload --port 8000
 
-# Terminal 2 — Frontend  
+# Terminal 2 — Frontend
 cd ~/finance-dashboard/frontend
 npm run dev
 ```
@@ -31,12 +31,12 @@ Open http://localhost:3000
 - frontend/components/Sidebar.tsx — Navigation
 
 ## API Endpoints (http://localhost:8000)
-- GET/POST   /api/v1/owners/
+- GET/POST        /api/v1/owners/
 - GET/POST/PUT/DELETE /api/v1/accounts/
-- POST       /api/v1/accounts/snapshots/  (upsert by account+date)
-- GET        /api/v1/accounts/{id}/snapshots/
-- GET        /api/v1/networth/summary
-- GET        /api/v1/networth/history
+- POST            /api/v1/accounts/snapshots/  (upsert by account+date)
+- GET             /api/v1/accounts/{id}/snapshots/
+- GET             /api/v1/networth/summary
+- GET             /api/v1/networth/history
 
 ## Database Tables
 owners, accounts, balance_snapshots, net_worth_snapshots,
@@ -49,47 +49,47 @@ insurance_policies, hsa_snapshots, income_entries, reviews
 - Net worth = latest snapshot per account, assets minus liabilities
 - Asset categories: cash, taxable, retirement, hsa, alternative, manual
 - Liability categories: credit_card, loan
-- Owners have member_type: self | spouse | child | joint
+- Owners: self | spouse | child | joint
 
-## Pages Built So Far
-- / — Dashboard (net worth summary, asset/liability cards)
-- /networth — Net worth history chart + allocation pie
-- /balances — Bulk balance entry (account names link to detail)
-- /accounts/[id] — Account detail with history chart + snapshot table
-- /settings — Household members + account management (add/edit/delete)
+## Pages Built
+- /                              — Dashboard
+- /networth                      — Net worth history chart + allocation pie
+- /balances                      — Bulk balance entry
+- /accounts/[id]                 — Account detail, history chart, snapshot table
+- /accounts/category/[category]  — All accounts in a category
+- /settings                      — Household members + account management
+
+## Sidebar Routes
+- Overview: /, /networth, /balances
+- Assets: /accounts/category/cash|taxable|retirement|hsa|alternative|manual
+- Liabilities: /accounts/category/credit_card|loan
+- Planning: /insurance, /spending, /reviews
+- System: /settings
 
 ## What's NOT Built Yet (planned)
-- /accounts/[category] — Account list pages per category
-- /insurance — Insurance policy tracker
-- /spending — Transaction entry + category breakdown
-- /reviews — Monthly/quarterly/yearly review cards
+- /insurance    — Insurance policy tracker
+- /spending     — Transaction entry + category breakdown
+- /reviews      — Monthly/quarterly/yearly review cards
 - Future planning — projections, budget vs actual
-- CSV import — for 401k statements and credit card transactions
-- Encryption — DB_PASSPHRASE currently empty (dev mode)
+- CSV import    — 401k statements + credit card transactions
+- Alembic migrations — schema versioning (TODO)
+- DB encryption — DB_PASSPHRASE empty in dev
 
 ## Git Workflow
-- main — stable releases (tagged v0.x.0)
-- dev — active development
-- feature/xxx — individual features, merge to dev then main
-- Current: on dev branch
+- main — stable (tagged)
+- dev  — active development
+- feature/xxx — individual features
 - Latest tag: v0.4.1
 
-## Key Design Decisions (already made, don't revisit)
-- No Plaid — manual balance entry by design
-- No cloud DB — SQLite only, local file
-- No auth — localhost only, single user
-- Schema changes via Alembic migrations (not yet set up — TODO)
-- Snapshot-based history — never update, always insert new date
+## Key Decisions (don't revisit)
+- No Plaid, no cloud, no auth
+- Manual balance entry, snapshot-based history
+- Localhost only
 
-## Household
+## Household (real data)
 - Jagat Parekh (self)
 - Rujal Kansara (spouse)
-- Kids support added (child member_type)
-- 529/Custodial subtypes available
+- Child support added
 
-## How to Resume in a New Conversation
-Tell Claude:
-"I'm building FinanceOS, a local personal finance dashboard.
-Read CLAUDE.md in my project for full context, then help me
-continue with [what you want to build next]."
-Then paste the contents of this file.
+## Resuming in a New Conversation
+Say: "I'm building FinanceOS. Here's the context:" then paste this file.
