@@ -3,8 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Wallet, CreditCard, Shield,
-  TrendingUp, PiggyBank, BarChart3, Settings,
-  ChevronRight
+  TrendingUp, PiggyBank, BarChart3, Settings, DollarSign
 } from "lucide-react";
 
 const nav = [
@@ -43,6 +42,7 @@ const nav = [
   {
     label: "System",
     items: [
+      { href: "/balances", label: "Update Balances", icon: DollarSign },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
@@ -53,7 +53,6 @@ export default function Sidebar() {
 
   return (
     <aside className="w-56 bg-white border-r border-gray-200 flex flex-col h-full shrink-0">
-      {/* Logo */}
       <div className="px-4 py-5 border-b border-gray-200">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center">
@@ -63,7 +62,6 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
         {nav.map((group) => (
           <div key={group.label}>
@@ -94,7 +92,6 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer */}
       <div className="px-4 py-3 border-t border-gray-200">
         <p className="text-xs text-gray-400">Local • Encrypted • Private</p>
       </div>
