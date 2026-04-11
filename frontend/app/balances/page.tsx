@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Save, RefreshCw, CheckCircle2, Clock } from "lucide-react";
+import Link from "next/link";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -63,7 +64,6 @@ export default function BalancesPage() {
     setAccounts(accts);
     setOwners(owners);
 
-    // Load latest snapshot for each account
     const snapMap: Record<string, any[]> = {};
     await Promise.all(accts.map(async (a: any) => {
       const res  = await fetch(`${API}/accounts/${a.id}/snapshots/`);
@@ -72,7 +72,6 @@ export default function BalancesPage() {
     }));
     setSnapshots(snapMap);
 
-    // Pre-fill balances with latest known value
     const initBalances: Record<string, string> = {};
     const initDates: Record<string, string>    = {};
     accts.forEach((a: any) => {
@@ -104,17 +103,16 @@ export default function BalancesPage() {
     setSaving((s) => ({ ...s, [accountId]: false }));
     setSaved((s)  => ({ ...s, [accountId]: true }));
     setTimeout(() => setSaved((s) => ({ ...s, [accountId]: false })), 3000);
-    // Refresh snapshots for this account
     const res  = await fetch(`${API}/accounts/${accountId}/snapshots/`);
     const data = await res.json();
     setSnapshots((prev) => ({ ...prev, [accountId]: data }));
   }
 
   async function saveAll() {
-    const accountsToSave = filtered.filter(
+    const toSave = filtered.filter(
       (a) => balances[a.id] !== "" && !isNaN(parseFloat(balances[a.id]))
     );
-    await Promise.all(accountsToSave.map((a) => saveOne(a.id)));
+    await Promise.all(toSave.map((a) => saveOne(a.id)));
   }
 
   function applyDateToAll() {
@@ -129,7 +127,6 @@ export default function BalancesPage() {
     ? accounts
     : accounts.filter((a) => a.owner_id === filterOwner);
 
-  // Group by category in defined order
   const grouped = CATEGORY_ORDER.reduce((acc, cat) => {
     const items = filtered.filter((a) => a.category === cat);
     if (items.length > 0) acc[cat] = items;
@@ -232,10 +229,15 @@ export default function BalancesPage() {
                   className={`bg-white rounded-xl border border-gray-200 border-l-4 ${CATEGORY_COLORS[cat]} p-4`}
                 >
                   <div className="flex items-start gap-4">
-                    {/* Account info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-gray-900 truncate">{a.name}</p>
+                        {/* ── Clickable account name ── */}
+                        <Link
+                          href={`/accounts/${a.id}`}
+                          className="text-sm font-semibold text-gray-900 truncate hover:text-indigo-600 transition-colors"
+                        >
+                          {a.name}
+                        </Link>
                         {a.institution && (
                           <span className="text-xs text-gray-400">{a.institution}</span>
                         )}
@@ -302,7 +304,7 @@ export default function BalancesPage() {
         </div>
       ))}
 
-      {/* Save all footer */}
+      {/* Sticky save all footer */}
       {filtered.length > 3 && (
         <div className="sticky bottom-4">
           <button
