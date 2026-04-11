@@ -9,17 +9,17 @@ SQLite (SQLCipher encrypted). No cloud, no external services.
 - Frontend: Next.js 16, TypeScript, Tailwind CSS, Recharts
 - Package managers: uv (Python), npm (Node)
 - Location: ~/finance-dashboard/
+- GitHub: https://github.com/jagatce/finance-dashboard
 
 ## Running the App
-```bash
-# Terminal 1 — Backend
-cd ~/finance-dashboard/backend
-uv run uvicorn main:app --reload --port 8000
+Terminal 1 — Backend:
+  cd ~/finance-dashboard/backend
+  uv run uvicorn main:app --reload --port 8000
 
-# Terminal 2 — Frontend
-cd ~/finance-dashboard/frontend
-npm run dev
-```
+Terminal 2 — Frontend:
+  cd ~/finance-dashboard/frontend
+  npm run dev
+
 Open http://localhost:3000
 
 ## Architecture
@@ -31,12 +31,12 @@ Open http://localhost:3000
 - frontend/components/Sidebar.tsx — Navigation
 
 ## API Endpoints (http://localhost:8000)
-- GET/POST        /api/v1/owners/
-- GET/POST/PUT/DELETE /api/v1/accounts/
-- POST            /api/v1/accounts/snapshots/  (upsert by account+date)
-- GET             /api/v1/accounts/{id}/snapshots/
-- GET             /api/v1/networth/summary
-- GET             /api/v1/networth/history
+- GET/POST             /api/v1/owners/
+- GET/POST/PUT/DELETE  /api/v1/accounts/
+- POST                 /api/v1/accounts/snapshots/  (upsert by account+date)
+- GET                  /api/v1/accounts/{id}/snapshots/
+- GET                  /api/v1/networth/summary
+- GET                  /api/v1/networth/history
 
 ## Database Tables
 owners, accounts, balance_snapshots, net_worth_snapshots,
@@ -49,15 +49,15 @@ insurance_policies, hsa_snapshots, income_entries, reviews
 - Net worth = latest snapshot per account, assets minus liabilities
 - Asset categories: cash, taxable, retirement, hsa, alternative, manual
 - Liability categories: credit_card, loan
-- Owners: self | spouse | child | joint
+- Owners have member_type: self | spouse | child | joint
 
 ## Pages Built
-- /                              — Dashboard
-- /networth                      — Net worth history chart + allocation pie
-- /balances                      — Bulk balance entry
-- /accounts/[id]                 — Account detail, history chart, snapshot table
-- /accounts/category/[category]  — All accounts in a category
-- /settings                      — Household members + account management
+- /                             — Dashboard
+- /networth                     — Net worth history chart + allocation pie
+- /balances                     — Bulk balance entry
+- /accounts/[id]                — Account detail, history chart, snapshot table
+- /accounts/category/[category] — All accounts in a category
+- /settings                     — Household members + account management
 
 ## Sidebar Routes
 - Overview: /, /networth, /balances
@@ -76,20 +76,20 @@ insurance_policies, hsa_snapshots, income_entries, reviews
 - DB encryption — DB_PASSPHRASE empty in dev
 
 ## Git Workflow
-- main — stable (tagged)
+- main — stable (tagged, pushed to GitHub)
 - dev  — active development
 - feature/xxx — individual features
-- Latest tag: v0.4.1
+- Latest tag: v0.5.1
 
 ## Key Decisions (don't revisit)
 - No Plaid, no cloud, no auth
 - Manual balance entry, snapshot-based history
 - Localhost only
 
-## Household (real data)
-- Jagat Parekh (self)
-- Rujal Kansara (spouse)
-- Child support added
+## Household
+- Two adults (self + spouse) + child support
+- member_type options: self | spouse | child | joint
+- 529/Custodial account subtypes available for children
 
 ## Resuming in a New Conversation
 Say: "I'm building FinanceOS. Here's the context:" then paste this file.
