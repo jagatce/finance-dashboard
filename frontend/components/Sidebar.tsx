@@ -1,17 +1,19 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Wallet, CreditCard, Shield,
-  TrendingUp, PiggyBank, BarChart3, Settings, DollarSign
+  TrendingUp, PiggyBank, BarChart3, Settings,
+  DollarSign, Database, LogOut
 } from "lucide-react";
+import { clearToken } from "@/lib/auth";
 
 const nav = [
   {
     label: "Overview",
     items: [
-      { href: "/",         label: "Dashboard",    icon: LayoutDashboard },
-      { href: "/networth", label: "Net Worth",     icon: TrendingUp },
+      { href: "/",         label: "Dashboard",      icon: LayoutDashboard },
+      { href: "/networth", label: "Net Worth",       icon: TrendingUp },
       { href: "/balances", label: "Update Balances", icon: DollarSign },
     ],
   },
@@ -44,13 +46,20 @@ const nav = [
   {
     label: "System",
     items: [
-      { href: "/settings", label: "Settings", icon: Settings },
+      { href: "/backup",   label: "Backup & Restore", icon: Database },
+      { href: "/settings", label: "Settings",         icon: Settings },
     ],
   },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router   = useRouter();
+
+  function handleLogout() {
+    clearToken();
+    router.replace("/login");
+  }
 
   return (
     <aside className="w-56 bg-white border-r border-gray-200 flex flex-col h-full shrink-0">
@@ -93,8 +102,15 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="px-4 py-3 border-t border-gray-200">
-        <p className="text-xs text-gray-400">Local • Encrypted • Private</p>
+      <div className="px-3 py-3 border-t border-gray-200 space-y-1">
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+        >
+          <LogOut className="w-4 h-4 shrink-0" />
+          Lock
+        </button>
+        <p className="text-xs text-gray-400 px-2">Local • Encrypted • Private</p>
       </div>
     </aside>
   );
