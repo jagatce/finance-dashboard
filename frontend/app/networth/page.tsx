@@ -5,6 +5,7 @@ import {
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from "recharts";
 import { TrendingUp, TrendingDown } from "lucide-react";
+import { apiFetch } from "@/lib/auth";
 
 const API = "http://localhost:8000/api/v1";
 

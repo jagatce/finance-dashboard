@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/auth";
 import { useEffect, useState } from "react";
 import { Plus, Trash2, User, Building2, Pencil, Check, X } from "lucide-react";
 
@@ -62,14 +63,14 @@ export default function Settings() {
   const [editForm, setEditForm] = useState<any>({});
 
   async function loadOwners() {
-    const res = await fetch(`${API}/owners/`);
+    const res = await apiFetch(`${API}/owners/`);
     const data = await res.json();
     setOwners(data);
     if (data.length > 0 && !acctOwner) setAcctOwner(data[0].id);
   }
 
   async function loadAccounts() {
-    const res = await fetch(`${API}/accounts/`);
+    const res = await apiFetch(`${API}/accounts/`);
     setAccounts(await res.json());
   }
 
@@ -79,7 +80,7 @@ export default function Settings() {
 
   async function addOwner() {
     if (!ownerName.trim()) return;
-    await fetch(`${API}/owners/`, {
+    await apiFetch(`${API}/owners/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: ownerName, member_type: ownerType }),
@@ -90,13 +91,13 @@ export default function Settings() {
   }
 
   async function deleteOwner(id: string) {
-    await fetch(`${API}/owners/${id}`, { method: "DELETE" });
+    await apiFetch(`${API}/owners/${id}`, { method: "DELETE" });
     loadOwners();
   }
 
   async function addAccount() {
     if (!acctName.trim() || !acctOwner) return;
-    await fetch(`${API}/accounts/`, {
+    await apiFetch(`${API}/accounts/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -114,7 +115,7 @@ export default function Settings() {
   }
 
   async function deleteAccount(id: string) {
-    await fetch(`${API}/accounts/${id}`, { method: "DELETE" });
+    await apiFetch(`${API}/accounts/${id}`, { method: "DELETE" });
     loadAccounts();
   }
 
@@ -131,7 +132,7 @@ export default function Settings() {
   }
 
   async function saveEdit(id: string) {
-    await fetch(`${API}/accounts/${id}`, {
+    await apiFetch(`${API}/accounts/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(editForm),

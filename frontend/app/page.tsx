@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/auth";
 import { useEffect, useState } from "react";
 import { TrendingUp, TrendingDown, Wallet, CreditCard, PiggyBank, RefreshCw } from "lucide-react";
 
@@ -38,7 +39,7 @@ export default function Dashboard() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/networth/summary`);
+      const res = await apiFetch(`${API}/networth/summary`);
       const data = await res.json();
       setSummary(data);
     } catch (e) {

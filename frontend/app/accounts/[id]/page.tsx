@@ -6,6 +6,7 @@ import {
   Tooltip, ResponsiveContainer
 } from "recharts";
 import { Clock, TrendingUp, TrendingDown, ArrowLeft } from "lucide-react";
+import { apiFetch } from "@/lib/auth";
 import Link from "next/link";
 
 const API = "http://localhost:8000/api/v1";

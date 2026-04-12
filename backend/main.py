@@ -1,8 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import engine, Base
+from app.core.auth import require_auth
 import app.models.models
-from app.api.v1 import owners, accounts, networth
+from app.api.v1 import owners, accounts, networth, auth, backup
 
 Base.metadata.create_all(bind=engine)
 
@@ -16,9 +17,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(owners.router,   prefix="/api/v1/owners",   tags=["Owners"])
-app.include_router(accounts.router, prefix="/api/v1/accounts", tags=["Accounts"])
-app.include_router(networth.router, prefix="/api/v1/networth", tags=["Net Worth"])
+# Public routes — no auth needed
+app.include_router(auth.router,   prefix="/api/v1/auth",    tags=["Auth"])
+
+# Protected routes — require auth token
+app.include_router(owners.router,   prefix="/api/v1/owners",   tags=["Owners"],    dependencies=[Depends(require_auth)])
+app.include_router(accounts.router, prefix="/api/v1/accounts", tags=["Accounts"],  dependencies=[Depends(require_auth)])
+app.include_router(networth.router, prefix="/api/v1/networth", tags=["Net Worth"], dependencies=[Depends(require_auth)])
+app.include_router(backup.router,   prefix="/api/v1/backup",   tags=["Backup"],    dependencies=[Depends(require_auth)])
 
 @app.get("/health")
 def health():

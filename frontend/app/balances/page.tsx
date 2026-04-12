@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch } from "@/lib/auth";
 import { useEffect, useState } from "react";
 import { Save, RefreshCw, CheckCircle2, Clock } from "lucide-react";
 import Link from "next/link";
@@ -66,7 +67,7 @@ export default function BalancesPage() {
 
     const snapMap: Record<string, any[]> = {};
     await Promise.all(accts.map(async (a: any) => {
-      const res  = await fetch(`${API}/accounts/${a.id}/snapshots/`);
+      const res  = await apiFetch(`${API}/accounts/${a.id}/snapshots/`);
       const data = await res.json();
       snapMap[a.id] = data;
     }));
@@ -90,7 +91,7 @@ export default function BalancesPage() {
     const bal = parseFloat(balances[accountId]);
     if (isNaN(bal)) return;
     setSaving((s) => ({ ...s, [accountId]: true }));
-    await fetch(`${API}/accounts/snapshots/`, {
+    await apiFetch(`${API}/accounts/snapshots/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -103,7 +104,7 @@ export default function BalancesPage() {
     setSaving((s) => ({ ...s, [accountId]: false }));
     setSaved((s)  => ({ ...s, [accountId]: true }));
     setTimeout(() => setSaved((s) => ({ ...s, [accountId]: false })), 3000);
-    const res  = await fetch(`${API}/accounts/${accountId}/snapshots/`);
+    const res  = await apiFetch(`${API}/accounts/${accountId}/snapshots/`);
     const data = await res.json();
     setSnapshots((prev) => ({ ...prev, [accountId]: data }));
   }
