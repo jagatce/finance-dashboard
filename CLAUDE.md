@@ -238,10 +238,13 @@ Without this all /api/v1/* calls return 404 from Next.js.
 
 ## Resuming in a New Conversation
 Say: "I am building FinanceOS. Here is the context:" then paste this file.
-Next step: Step 4 test (price_service.py), then Steps 5-10.
 
-Before writing any code, always confirm branch:
-  git branch
+Before writing any code, always confirm branch and create a feature branch:
+  git checkout main
+  git pull origin main
+  git checkout -b feature/<name>   # e.g. feature/insurance, feature/spending
   git log --oneline -3
-Holdings feature is complete on feature/holdings (tagged v0.7.0-holdings).
-For new features, branch from feature/holdings or merge to main first.
+
+Current stable base: main (v0.8.0)
+Holdings + Claude Sensor are complete and merged to main.
+All new features should branch from main.
