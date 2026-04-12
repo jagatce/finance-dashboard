@@ -64,13 +64,14 @@ How .env is loaded:
 - GET        /api/v1/backup/download
 - POST       /api/v1/backup/restore
 
-### New Holdings (TODO — not yet wired)
+### Holdings (live)
 - POST       /api/v1/holdings/import
 - GET        /api/v1/holdings/
 - GET        /api/v1/holdings/summary
 - GET        /api/v1/holdings/analysis
 - POST       /api/v1/holdings/analysis/refresh
 - GET        /api/v1/holdings/prices/refresh
+- DELETE     /api/v1/holdings/account/{account_id}
 
 ## All API calls from frontend use apiFetch() from @/lib/auth
 ## This automatically adds x-auth-token header to every request
