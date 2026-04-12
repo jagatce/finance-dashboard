@@ -165,3 +165,68 @@ class Review(Base):
     savings_rate     = Column(Float)
     notes            = Column(Text)
     generated_at     = Column(DateTime, default=datetime.utcnow)
+
+# ── Holdings Island ───────────────────────────────────────────────────────────
+# Completely self-contained. No FK constraints to existing tables.
+# account_id is a plain string reference — no ORM relationship.
+# Base.metadata.create_all() creates these on next backend start.
+
+class Holding(Base):
+    """One row per ticker per account per import. Append-only."""
+    __tablename__ = "holdings"
+    id                   = Column(String, primary_key=True, default=gen_uuid)
+    account_id           = Column(String, nullable=False, index=True)
+    ticker               = Column(String, nullable=False)
+    name                 = Column(String)
+    asset_type           = Column(String)   # etf|stock|fund|fund_nontickered|fund_cusip
+    shares               = Column(Float, nullable=False)
+    cost_basis_per_share = Column(Float)    # None for Empower
+    total_cost_basis     = Column(Float)    # None for Empower
+    broker               = Column(String)   # betterment|fidelity|m1|empower
+    as_of_date           = Column(Date, nullable=False)
+    imported_at          = Column(DateTime, default=datetime.utcnow)
+    yfinance_ticker      = Column(String)   # BRK.B -> BRK-B, else same as ticker
+    last_price           = Column(Float)    # Last price from CSV (used for nontickered funds)
+    current_value        = Column(Float)    # Current value from CSV (used for nontickered funds)
+
+
+class PriceCache(Base):
+    """One row per ticker. Refreshed on demand via yfinance. TTL=24h."""
+    __tablename__ = "price_cache"
+    ticker         = Column(String, primary_key=True)
+    name           = Column(String)
+    price          = Column(Float)
+    prev_close     = Column(Float)
+    day_change_pct = Column(Float)
+    sector         = Column(String)
+    asset_type     = Column(String)
+    currency       = Column(String, default="USD")
+    updated_at     = Column(DateTime)
+
+
+class HoldingsAnalysis(Base):
+    """Cached Claude analysis. holdings_hash detects stale cache."""
+    __tablename__ = "holdings_analysis"
+    id             = Column(String, primary_key=True, default=gen_uuid)
+    generated_at   = Column(DateTime, default=datetime.utcnow)
+    holdings_hash  = Column(String)
+    analysis_json  = Column(Text)
+
+
+class Watchlist(Base):
+    """Manual watchlist — tickers to track outside of holdings."""
+    __tablename__ = "watchlist"
+    ticker     = Column(String, primary_key=True)
+    notes      = Column(String)
+    added_at   = Column(DateTime, default=datetime.utcnow)
+
+
+class TickerAnalysis(Base):
+    """Cached per-ticker Claude analysis + technicals."""
+    __tablename__ = "ticker_analysis"
+    ticker           = Column(String, primary_key=True)
+    signal           = Column(String)   # buy | sell | watch
+    health_score     = Column(Integer)  # 0-100
+    analysis_json    = Column(Text)     # full Claude response
+    technicals_json  = Column(Text)     # RSI, MACD, BB, EMA200, ATH
+    refreshed_at     = Column(DateTime)
