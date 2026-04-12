@@ -29,6 +29,18 @@ Open http://localhost:3000
 - DB_PASSPHRASE is separate — left empty for now (DB not encrypted yet)
 - Current login passphrase: set in backend/.env (never commit this)
 
+## Environment Variables (backend/.env)
+Required — app will start but features will fail silently without these:
+  LOGIN_PASSPHRASE=...         # gates /login screen. Empty = auto-login (dev mode)
+  DB_PASSPHRASE=               # DB encryption key (not yet implemented, leave empty)
+  ANTHROPIC_API_KEY=sk-ant-... # required for /holdings/analysis — get from console.anthropic.com
+
+How .env is loaded:
+  - load_dotenv() is called in backend/app/core/config.py
+  - config.py MUST be imported at the top of main.py BEFORE any routers
+  - main.py line 1: from app.core import config  # noqa: F401
+  - If this import is missing, ANTHROPIC_API_KEY will be None at runtime and analysis will fail
+
 ## Architecture
 - backend/main.py — FastAPI entry point, all routers registered here
 - backend/app/models/models.py — All SQLAlchemy models
@@ -174,6 +186,31 @@ RULE: Holdings and Balances never read from or write to each other. Ever.
 - TTL = 24 hours, checked against price_cache.updated_at
 - Batch fetches via yf.download() then individual yf.Ticker().info for metadata
 - _classify(info) maps yfinance quoteType to our asset_type enum
+
+## Known Issues & Fixes
+
+### curl-cffi on macOS (yfinance dependency)
+Symptom: ImportError: dlopen(.../_wrapper.abi3.so): symbol not found in flat namespace (_SCDynamicStoreCopyProxies)
+Cause: Latest curl-cffi build is broken on macOS with Homebrew Python
+Fix: uv pip install "curl-cffi==0.7.4"
+Must be re-applied after any uv sync or uv pip install that upgrades curl-cffi.
+To pin permanently add to pyproject.toml:
+  [tool.uv.overrides]
+  curl-cffi = "==0.7.4"
+
+### Always start backend with venv Python directly (not uv run)
+Reason: uv run may resolve to system Python which doesn't have the pinned curl-cffi
+Correct: cd ~/finance-dashboard/backend && .venv/bin/uvicorn main:app --reload --port 8000
+Wrong:   uv run uvicorn main:app --reload --port 8000
+
+### Next.js API proxy (next.config.ts)
+All frontend API calls use relative URLs (/api/v1/...) via apiFetch().
+Next.js must proxy these to FastAPI on port 8000.
+next.config.ts must contain:
+  async rewrites() {
+    return [{ source: "/api/:path*", destination: "http://localhost:8000/api/:path*" }]
+  }
+Without this all /api/v1/* calls return 404 from Next.js.
 
 ## Git Workflow
 - main — stable (tagged, pushed to GitHub)
