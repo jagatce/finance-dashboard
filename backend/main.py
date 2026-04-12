@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import engine, Base
 from app.core.auth import require_auth
 import app.models.models
-from app.api.v1 import owners, accounts, networth, auth, backup, holdings
+from app.api.v1 import owners, accounts, networth, auth, backup, holdings, sensor
 
 Base.metadata.create_all(bind=engine)
 
@@ -27,6 +27,7 @@ app.include_router(accounts.router, prefix="/api/v1/accounts", tags=["Accounts"]
 app.include_router(networth.router, prefix="/api/v1/networth", tags=["Net Worth"], dependencies=[Depends(require_auth)])
 app.include_router(backup.router,   prefix="/api/v1/backup",   tags=["Backup"],    dependencies=[Depends(require_auth)])
 app.include_router(holdings.router)
+app.include_router(sensor.router)
 
 @app.get("/health")
 def health():

@@ -179,7 +179,7 @@ export default function NetWorthPage() {
                 width={60}
               />
               <Tooltip
-                formatter={(v: number) => [fmt(v), "Net Worth"]}
+                formatter={(v) => [fmt(v as number), "Net Worth"]}
                 labelFormatter={(d) => new Date(d).toLocaleDateString("en-US", {
                   month: "long", day: "numeric", year: "numeric"
                 })}

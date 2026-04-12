@@ -211,3 +211,22 @@ class HoldingsAnalysis(Base):
     generated_at   = Column(DateTime, default=datetime.utcnow)
     holdings_hash  = Column(String)
     analysis_json  = Column(Text)
+
+
+class Watchlist(Base):
+    """Manual watchlist — tickers to track outside of holdings."""
+    __tablename__ = "watchlist"
+    ticker     = Column(String, primary_key=True)
+    notes      = Column(String)
+    added_at   = Column(DateTime, default=datetime.utcnow)
+
+
+class TickerAnalysis(Base):
+    """Cached per-ticker Claude analysis + technicals."""
+    __tablename__ = "ticker_analysis"
+    ticker           = Column(String, primary_key=True)
+    signal           = Column(String)   # buy | sell | watch
+    health_score     = Column(Integer)  # 0-100
+    analysis_json    = Column(Text)     # full Claude response
+    technicals_json  = Column(Text)     # RSI, MACD, BB, EMA200, ATH
+    refreshed_at     = Column(DateTime)

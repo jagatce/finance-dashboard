@@ -170,7 +170,7 @@ export default function AccountDetailPage() {
                 width={60}
               />
               <Tooltip
-                formatter={(v: number) => [fmt(v), "Balance"]}
+                formatter={(v) => [fmt(v as number), "Balance"]}
                 labelFormatter={(d) => new Date(d).toLocaleDateString("en-US", {
                   month: "long", day: "numeric", year: "numeric"
                 })}

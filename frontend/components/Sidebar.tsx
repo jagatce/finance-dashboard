@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Wallet, CreditCard, Shield,
   TrendingUp, PiggyBank, BarChart3, Settings,
-  DollarSign, Database, LogOut, BarChart2, Sparkles
+  DollarSign, Database, LogOut, BarChart2, Sparkles, Radio
 } from "lucide-react";
 import { clearToken } from "@/lib/auth";
 
@@ -48,6 +48,12 @@ const nav = [
     items: [
       { href: "/holdings",          label: "Positions",  icon: BarChart2 },
       { href: "/holdings/analysis", label: "AI Analysis", icon: Sparkles },
+    ],
+  },
+  {
+    label: "Claude Sensor",
+    items: [
+      { href: "/sensor", label: "Sensor", icon: Radio },
     ],
   },
   {
