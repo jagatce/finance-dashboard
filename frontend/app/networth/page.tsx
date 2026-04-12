@@ -62,8 +62,8 @@ export default function NetWorthPage() {
   useEffect(() => {
     async function load() {
       const [histRes, sumRes] = await Promise.all([
-        fetch(`${API}/networth/history`),
-        fetch(`${API}/networth/summary`),
+        apiFetch(`${API}/networth/history`),
+        apiFetch(`${API}/networth/summary`),
       ]);
       setHistory(await histRes.json());
       setSummary(await sumRes.json());
