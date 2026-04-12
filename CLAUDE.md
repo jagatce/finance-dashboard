@@ -176,3 +176,8 @@ holdings, price_cache, holdings_analysis
 ## Resuming in a New Conversation
 Say: "I am building FinanceOS. Here is the context:" then paste this file.
 Next step: Step 4 test (price_service.py), then Steps 5-10.
+
+Before writing any code, always confirm branch:
+  git branch  # must show * feature/holdings
+  git log --oneline -3
+If not on feature/holdings: git checkout feature/holdings
