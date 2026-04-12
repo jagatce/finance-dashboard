@@ -147,26 +147,7 @@ RULE: Holdings and Balances never read from or write to each other. Ever.
 - DB encryption — DB_PASSPHRASE + SQLCipher (deferred, needs fresh DB)
 - Alembic migrations — schema versioning (TODO)
 
-## Holdings Feature — Build Status
-### DONE
-- Step 1: models.py — Holding, PriceCache, HoldingsAnalysis tables appended
-- Step 2: pyproject.toml — yfinance, pdfplumber, anthropic, httpx, python-multipart added
-- Step 3: holdings_import.py — All broker parsers complete and tested
-  - Betterment CSV (lot-level, aggregates by ticker)
-  - Fidelity CSV (all variants: standard, Dell nontickered, SNPS CUSIP mix)
-  - M1 Finance CSV
-  - Empower PDF (pdfplumber table extraction)
-  - Robinhood PDF (text extraction, multi-account, skips $0 accounts)
-- Step 4: price_service.py — yfinance wrapper with 24h TTL cache (written, NOT yet tested)
 
-### TODO (next session)
-- Step 4 test: verify price_service.py works with real tickers
-- Step 5: analysis_service.py — Claude API wrapper
-- Step 6: holdings.py — API routes
-- Step 7: main.py — register holdings router (2 lines)
-- Step 8: Sidebar.tsx — add Holdings nav item (1 item)
-- Step 9: frontend/app/holdings/page.tsx — import UI + positions table
-- Step 10: frontend/app/holdings/analysis/page.tsx — AI analysis view
 
 ## Broker CSV/PDF Parser Notes
 - detect_broker() auto-detects from headers
@@ -241,6 +222,7 @@ Say: "I am building FinanceOS. Here is the context:" then paste this file.
 Next step: Step 4 test (price_service.py), then Steps 5-10.
 
 Before writing any code, always confirm branch:
-  git branch  # must show * feature/holdings
+  git branch
   git log --oneline -3
-If not on feature/holdings: git checkout feature/holdings
+Holdings feature is complete on feature/holdings (tagged v0.7.0-holdings).
+For new features, branch from feature/holdings or merge to main first.
