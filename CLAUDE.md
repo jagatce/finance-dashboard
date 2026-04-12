@@ -217,6 +217,25 @@ Without this all /api/v1/* calls return 404 from Next.js.
 - Write code directly to the filesystem using cat, heredoc, or python3 patch scripts
 - No file attachments — everything goes through the terminal
 
+## Claude Sensor Feature — Complete ✅
+- /sensor page: two tabs (Portfolio from holdings, Research manual watchlist)
+- Wafer rows: ticker, price, EMA200, delta, RSI, signal badge, health bar, timestamp, Analyze button
+- /sensor/[ticker] drill-down: technicals panel, fundamentals panel, Claude analysis panel
+- Signal: buy | sell | watch — Claude judgment based on technicals + fundamentals
+- Health score: 0-100, on-demand analysis only — manual Analyze per ticker or Refresh All
+- New DB tables: watchlist, ticker_analysis
+- New services: technicals_service.py, sensor_service.py
+- New API: /api/v1/sensor/* (7 routes)
+- Sidebar: Claude Sensor with Radio icon
+- Safe revert tag: v0.8.0-sensor
+
+## Next Areas
+- /insurance — insurance policy tracker
+- /spending — transaction entry + category breakdown
+- /reviews — monthly/quarterly review cards
+- Price chart on /sensor/[ticker] (6m OHLCV via Recharts)
+- DB encryption (SQLCipher + DB_PASSPHRASE)
+
 ## Resuming in a New Conversation
 Say: "I am building FinanceOS. Here is the context:" then paste this file.
 Next step: Step 4 test (price_service.py), then Steps 5-10.
