@@ -44,9 +44,9 @@ export default function AccountDetailPage() {
   useEffect(() => {
     async function load() {
       const [acctRes, snapRes, ownerRes] = await Promise.all([
-        fetch(`${API}/accounts/`),
-        fetch(`${API}/accounts/${id}/snapshots/`),
-        fetch(`${API}/owners/`),
+        apiFetch(`${API}/accounts/`),
+        apiFetch(`${API}/accounts/${id}/snapshots/`),
+        apiFetch(`${API}/owners/`),
       ]);
       const accts  = await acctRes.json();
       const snaps  = await snapRes.json();

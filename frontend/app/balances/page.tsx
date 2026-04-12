@@ -57,8 +57,8 @@ export default function BalancesPage() {
   async function load() {
     setLoading(true);
     const [acctRes, ownerRes] = await Promise.all([
-      fetch(`${API}/accounts/`),
-      fetch(`${API}/owners/`),
+      apiFetch(`${API}/accounts/`),
+      apiFetch(`${API}/owners/`),
     ]);
     const accts  = await acctRes.json();
     const owners = await ownerRes.json();
