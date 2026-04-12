@@ -1,0 +1,14 @@
+﻿Account Number,Account Name,Symbol,Description,Quantity,Last Price,Last Price Change,Current Value,Today's Gain/Loss Dollar,Today's Gain/Loss Percent,Total Gain/Loss Dollar,Total Gain/Loss Percent,Percent Of Account,Cost Basis Total,Average Cost Basis,Type
+652319182,BrokerageLink,FDRXX**,HELD IN MONEY MARKET,,,,$2052.60,,,,,10.53%,,,Cash,
+652319182,BrokerageLink,MSTY,TIDAL TRUST II YIELDMAX MSTR OP,59.68,$21.29,+$0.08,$1270.58,+$4.77,+0.37%,--,--,6.52%,$2529.85,$42.39,Cash,
+652319182,BrokerageLink,PLTY,TIDAL TRUST II YIELDMAX PLTR OP,98.425,$33.68,-$0.56,$3314.95,-$55.12,-1.64%,--,--,17.01%,$2105.40,$21.39,Cash,
+652319182,BrokerageLink,QDTE,ROUNDHILL INNOVATION -100 0DTE COVERED CALL STRATEGY ETF,40.164,$28.575,+$0.035,$1147.68,+$1.40,+0.12%,--,--,5.89%,$1002.75,$24.97,Cash,
+652319182,BrokerageLink,ULTY,TIDAL TRUST II YIELDMAX ULTRA O,305.336,$31.19,+$0.17,$9523.42,+$51.90,+0.54%,-$671.79,-6.59%,48.88%,$10195.21,$33.39,Cash,
+652319182,BrokerageLink,XDTE,ROUNDHILL ETF TRUST S&P 500 0DTE COVERED CALL STRATEGY ETF,18.921,$37.79,-$0.035,$715.02,-$0.67,-0.10%,--,--,3.67%,$651.89,$34.45,Cash,
+652319182,BrokerageLink,YBIT,TIDAL TRUST II YIELDMAX BITCOIN ISIN #US88636X1046 SEDOL #BTTS4G1,59.766,$24.44,+$0.20,$1460.68,+$11.95,+0.82%,--,--,7.50%,$1834.04,$30.69,Cash,
+
+"The data and information in this spreadsheet is provided to you solely for your use and is not for distribution. The spreadsheet is provided for informational purposes only, and is not intended to provide advice, nor should it be construed as an offer to sell, a solicitation of an offer to buy or a recommendation for any security by Fidelity or any third party. Data and information shown is based on information known to Fidelity as of the date it was exported and is subject to change. It should not be used in place of your account statements or trade confirmations and is not intended for tax reporting purposes. For more information on the data included in this spreadsheet, including any limitations thereof, go to Fidelity.com."
+
+"Brokerage services are provided by Fidelity Brokerage Services LLC (FBS), 900 Salem Street, Smithfield, RI 02917. Custody and other services provided by National Financial Services LLC (NFS). Both are Fidelity Investment companies and members SIPC, NYSE. Neither FBS nor NFS offer crypto as a direct investment nor provide trading or custody services for such assets."
+
+"Date downloaded Apr-12-2026 12:18 p.m ET"
