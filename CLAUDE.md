@@ -229,12 +229,68 @@ Without this all /api/v1/* calls return 404 from Next.js.
 - Sidebar: Claude Sensor with Radio icon
 - Safe revert tag: v0.8.0-sensor
 
-## Next Areas
-- /insurance — insurance policy tracker
-- /spending — transaction entry + category breakdown
-- /reviews — monthly/quarterly review cards
+## Next Areas — Prioritized
+
+### Priority 1: /spending (next session)
+IMPORTANT — check existing tables before creating new ones:
+  - spend_categories table already exists (check schema before using)
+  - reviews table already exists (check schema before using)
+  - transactions table already exists (check schema before using)
+  - income_entries table already exists (check schema before using)
+  Run: SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name;
+  to see all existing tables and their columns before designing new schema.
+
+
+Manual transaction entry + bank CSV import + Claude auto-categorization.
+No Plaid — privacy first. Banks export CSVs (Chase, Amex, BofA, Citi).
+
+Data model:
+  transactions: id, date, amount, description, category, account_id, owner, notes, is_recurring
+  spend_categories already exists in DB (check before creating)
+
+How it works:
+  - Upload bank CSV → Claude auto-categorizes in one API call
+  - Manual add/edit transactions
+  - Monthly view: income, spending, savings rate, breakdown by category
+  - Detect recurring transactions (Netflix, rent, etc.)
+
+Bank CSV parsers needed (similar to holdings_import.py):
+  - Chase: Date, Description, Amount (negative = expense)
+  - Amex: Date, Description, Amount (positive = expense)
+  - BofA: Date, Description, Amount
+  - Citi: Date, Description, Debit, Credit
+
+Claude's role: batch auto-categorize on import. One call per upload.
+Returns [{description, suggested_category}] for user to confirm/override.
+
+Pages:
+  /spending — month picker, upload CSV, add manually, category breakdown, transaction list
+
+### Priority 2: /reviews (session after spending)
+Auto-generated monthly/quarterly review cards from ALL data sources.
+Claude synthesizes net worth + cash flow + holdings + sensor signals.
+
+Data model:
+  reviews: id, period (2026-03), period_type (monthly|quarterly|yearly),
+           review_json, notes, reviewed_at, generated_at
+
+Review card sections:
+  - Net worth delta (from balance_snapshots)
+  - Cash flow: income, spending, savings rate (from transactions)
+  - Holdings performance: best/worst performers (from holdings + price_cache)
+  - Sensor alerts: buy/sell signals (from ticker_analysis)
+  - Claude summary + action items
+  - Manual notes field
+
+/reviews is the page that makes FinanceOS sticky — answers "so what?" for all data.
+
+### Priority 3: Deferred
 - Price chart on /sensor/[ticker] (6m OHLCV via Recharts)
+- /insurance — policy tracker (low complexity, low priority)
 - DB encryption (SQLCipher + DB_PASSPHRASE)
+- Natural language query on dashboard
+- Retirement readiness projections
+- Tax efficiency score (asset location analysis)
 
 ## Resuming in a New Conversation
 Say: "I am building FinanceOS. Here is the context:" then paste this file.
