@@ -186,6 +186,8 @@ class Holding(Base):
     as_of_date           = Column(Date, nullable=False)
     imported_at          = Column(DateTime, default=datetime.utcnow)
     yfinance_ticker      = Column(String)   # BRK.B -> BRK-B, else same as ticker
+    last_price           = Column(Float)    # Last price from CSV (used for nontickered funds)
+    current_value        = Column(Float)    # Current value from CSV (used for nontickered funds)
 
 
 class PriceCache(Base):

@@ -84,7 +84,8 @@ def _fidelity_date(raw_text: str) -> date:
 # ── Output row builder ────────────────────────────────────────────────────────
 
 def _row(ticker, name, shares, cost_per_share, total_cost,
-         broker, as_of, asset_type="etf", yf_ticker=None):
+         broker, as_of, asset_type="etf", yf_ticker=None,
+         last_price=None, current_value=None):
     t = ticker.strip() if ticker else ticker
     return {
         "ticker":               t,
@@ -92,6 +93,8 @@ def _row(ticker, name, shares, cost_per_share, total_cost,
         "shares":               shares,
         "cost_basis_per_share": cost_per_share,
         "total_cost_basis":     total_cost,
+        "last_price":           last_price,
+        "current_value":        current_value,
         "broker":               broker,
         "as_of_date":           as_of,
         "asset_type":           asset_type,
@@ -155,11 +158,13 @@ def parse_fidelity(content: str) -> list[dict]:
     reader = csv.DictReader(io.StringIO("\n".join(data_lines)))
 
     for row in reader:
-        symbol   = (row.get("Symbol") or "").strip().rstrip("*")
-        desc     = (row.get("Description") or "").strip()
-        qty      = _num(row.get("Quantity"))
-        avg_cost = _num(row.get("Average Cost Basis"))
-        tot_cost = _num(row.get("Cost Basis Total"))
+        symbol      = (row.get("Symbol") or "").strip().rstrip("*")
+        desc        = (row.get("Description") or "").strip()
+        qty         = _num(row.get("Quantity"))
+        avg_cost    = _num(row.get("Average Cost Basis"))
+        tot_cost    = _num(row.get("Cost Basis Total"))
+        last_price  = _num(row.get("Last Price"))
+        cur_value   = _num(row.get("Current Value"))
 
         if _should_skip(symbol or desc, row.get("Quantity")):
             continue
@@ -173,6 +178,8 @@ def parse_fidelity(content: str) -> list[dict]:
                 shares         = qty or 0.0,
                 cost_per_share = avg_cost,
                 total_cost     = tot_cost,
+                last_price     = last_price,
+                current_value  = cur_value,
                 broker         = "fidelity",
                 as_of          = as_of,
                 asset_type     = "fund_nontickered",
@@ -187,6 +194,8 @@ def parse_fidelity(content: str) -> list[dict]:
                 shares         = qty or 0.0,
                 cost_per_share = avg_cost,
                 total_cost     = tot_cost,
+                last_price     = last_price,
+                current_value  = cur_value,
                 broker         = "fidelity",
                 as_of          = as_of,
                 asset_type     = "fund_cusip",
@@ -200,6 +209,8 @@ def parse_fidelity(content: str) -> list[dict]:
             shares         = qty or 0.0,
             cost_per_share = avg_cost,
             total_cost     = tot_cost,
+            last_price     = last_price,
+            current_value  = cur_value,
             broker         = "fidelity",
             as_of          = as_of,
             asset_type     = "etf",
@@ -247,6 +258,7 @@ def parse_empower_pdf(pdf_bytes: bytes) -> list[dict]:
     as_of   = date.today()
     results = []
 
+    # Rows to skip — section headers, totals, cash sweeps
     SKIP_NAMES = {
         "US DOLLARS AND MONEY FUND SWEEPS",
         "Total Cash and Cash Equivalents",
@@ -254,6 +266,8 @@ def parse_empower_pdf(pdf_bytes: bytes) -> list[dict]:
         "Cash and Cash Equivalents", "Equity", "Fixed Income",
         "Account Type: Individual",
     }
+    # Header rows by symbol cell content
+    SKIP_SYMBOLS = {"USD", "Symbol", ""}
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         full_text = "\n".join(p.extract_text() or "" for p in pdf.pages)
@@ -268,34 +282,50 @@ def parse_empower_pdf(pdf_bytes: bytes) -> list[dict]:
         for page in pdf.pages:
             tables = page.extract_tables()
             for table in tables:
-                for row in table:
-                    if not row or len(row) < 4:
-                        continue
-                    cells = [str(c).strip() if c else "" for c in row]
-                    name  = cells[0] if cells else ""
+                # Only process Account Holdings tables (have 6 cols with Symbol/Price/Qty/MktVal)
+                if not table or len(table) < 2:
+                    continue
 
-                    if name in SKIP_NAMES or not name:
-                        continue
-                    if name.startswith("Account Holdings"):
-                        continue
-                    if name.startswith("Report Legend"):
-                        continue
+                # Detect holdings table by header row containing "Symbol"
+                header_idx = None
+                for ri, row in enumerate(table):
+                    cells = [str(c or "").strip() for c in row]
+                    if "Symbol" in cells and "Quantity" in cells:
+                        header_idx = ri
+                        break
 
-                    symbol = None
-                    qty    = None
+                if header_idx is None:
+                    continue
 
-                    for cell in cells[1:]:
-                        cell_clean = cell.strip()
-                        if re.match(r'^[A-Z]{2,5}$', cell_clean) and not symbol:
-                            symbol = cell_clean
-                        elif symbol and qty is None:
-                            q = _num(cell_clean)
-                            if q is not None and q > 0:
-                                qty = q
+                # Map column positions from header
+                hdr = [str(c or "").strip() for c in table[header_idx]]
+                try:
+                    sym_i = hdr.index("Symbol")
+                    qty_i = hdr.index("Quantity")
+                    # Price and Market Value may vary
+                    price_i = hdr.index("Price") if "Price" in hdr else None
+                    mktval_i = hdr.index("Market Value") if "Market Value" in hdr else None
+                except ValueError:
+                    continue
 
-                    if not symbol or qty is None:
+                for row in table[header_idx + 1:]:
+                    if not row or len(row) <= max(sym_i, qty_i):
                         continue
-                    if symbol in SKIP_SYMBOLS:
+                    cells = [str(c or "").strip() for c in row]
+
+                    name   = cells[0] if cells[0] else ""
+                    symbol = cells[sym_i] if sym_i < len(cells) else ""
+                    qty    = _num(cells[qty_i]) if qty_i < len(cells) else None
+                    price  = _num(cells[price_i]) if (price_i and price_i < len(cells)) else None
+                    mktval = _num(cells[mktval_i]) if (mktval_i and mktval_i < len(cells)) else None
+
+                    if not symbol or symbol in SKIP_SYMBOLS:
+                        continue
+                    if not re.match(r'^[A-Z]{1,6}$', symbol):
+                        continue
+                    if name in SKIP_NAMES:
+                        continue
+                    if qty is None or qty <= 0:
                         continue
 
                     results.append(_row(
@@ -304,11 +334,14 @@ def parse_empower_pdf(pdf_bytes: bytes) -> list[dict]:
                         shares         = qty,
                         cost_per_share = None,
                         total_cost     = None,
+                        last_price     = price,
+                        current_value  = mktval,
                         broker         = "empower",
                         as_of          = as_of,
                         asset_type     = "etf",
                     ))
 
+    # Dedupe by ticker — keep first occurrence
     seen    = {}
     deduped = []
     for r in results:
