@@ -173,6 +173,11 @@ holdings, price_cache, holdings_analysis
 - Dell 401k: nontickered funds kept, marked fund_nontickered, no yfinance lookup
 - SNPS BrokerageLink row skipped to avoid double-counting with brok_link file
 
+## Developer Preferences
+- Always use bash/terminal commands to write files, never artifacts or file downloads
+- Write code directly to the filesystem using cat, heredoc, or python3 patch scripts
+- No file attachments — everything goes through the terminal
+
 ## Resuming in a New Conversation
 Say: "I am building FinanceOS. Here is the context:" then paste this file.
 Next step: Step 4 test (price_service.py), then Steps 5-10.
