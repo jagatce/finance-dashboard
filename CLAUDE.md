@@ -72,6 +72,26 @@ insurance_policies, hsa_snapshots, income_entries, reviews
 ### New Holdings Island — self-contained, no FK to existing tables
 holdings, price_cache, holdings_analysis
 
+## Critical Separation — Holdings vs Balances
+These are two completely independent systems. Never confuse them.
+
+BALANCES / NET WORTH:
+- Driven by balance_snapshots table
+- Entered manually on /balances page (one number per account)
+- Powers all existing pages: dashboard, /networth, /accounts, category pages
+- This is the core of the app — always accurate, always manual entry
+
+HOLDINGS:
+- Driven by holdings, price_cache, holdings_analysis tables
+- Imported via CSV/PDF on /holdings page
+- Powers only /holdings and /holdings/analysis pages
+- Completely additive — zero impact on balances or net worth
+- Can be messy, incomplete, or missing — does not matter
+- Importing holdings never updates a balance snapshot
+- Deleting holdings never affects net worth
+
+RULE: Holdings and Balances never read from or write to each other. Ever.
+
 ## Holdings Island — Key Rules
 - holdings.account_id is a plain string — NO ForeignKey constraint, NO ORM relationship
 - Holdings NEVER writes to existing tables
