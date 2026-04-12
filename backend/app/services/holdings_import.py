@@ -1,7 +1,7 @@
 """
 Holdings CSV/PDF import service.
-Supports: Betterment, Fidelity (all variants), M1 Finance, Empower (PDF).
-Returns a list of normalized dicts — no DB writes here, caller does that.
+Supports: Betterment, Fidelity (all variants), M1, Empower (PDF), Robinhood (PDF).
+Returns normalized list of dicts — no DB writes here, caller does that.
 """
 import csv
 import io
@@ -14,7 +14,6 @@ from typing import Optional
 # ── Numeric cleaning ──────────────────────────────────────────────────────────
 
 def _num(val) -> Optional[float]:
-    """Strip $, +, commas, %, handle --, empty, None."""
     if val is None:
         return None
     s = str(val).strip()
@@ -30,13 +29,11 @@ def _num(val) -> Optional[float]:
 # ── Ticker helpers ────────────────────────────────────────────────────────────
 
 def _yf_ticker(ticker: str) -> Optional[str]:
-    """Normalize ticker for yfinance. BRK.B -> BRK-B."""
     if not ticker:
         return None
     return ticker.strip().replace(".", "-")
 
 def _is_cusip(symbol: str) -> bool:
-    """9-char alphanumeric = CUSIP, not a tradeable ticker."""
     return bool(re.match(r'^[A-Z0-9]{9}$', symbol.strip()))
 
 SKIP_SYMBOLS = {
@@ -49,7 +46,6 @@ def _should_skip(symbol: str, quantity) -> bool:
         sym = symbol.strip().rstrip("*").upper()
         if sym in SKIP_SYMBOLS:
             return True
-    # Skip rows with no quantity (money market rows)
     if quantity is None or str(quantity).strip() == "":
         return True
     try:
@@ -76,7 +72,6 @@ def detect_broker(headers: list[str]) -> str:
 # ── Fidelity date extraction ──────────────────────────────────────────────────
 
 def _fidelity_date(raw_text: str) -> date:
-    """Extract as-of date from Fidelity footer: 'Date downloaded Apr-12-2026'"""
     m = re.search(r'Date downloaded (\w+-\d+-\d+)', raw_text)
     if m:
         try:
@@ -107,19 +102,13 @@ def _row(ticker, name, shares, cost_per_share, total_cost,
 # ── Betterment parser ─────────────────────────────────────────────────────────
 
 def parse_betterment(content: str) -> list[dict]:
-    """
-    Lot-level export — aggregate lots by ticker.
-    Columns: Account, Account #, Symbol, Shares, PurchaseDate,
-             MarketValue, CostBasis, $UnrealizedGain/Loss, %UnrealizedGain/Loss
-    """
     reader = csv.DictReader(io.StringIO(content))
-    lots: dict[str, dict] = {}  # ticker -> aggregated
+    lots: dict[str, dict] = {}
 
     for row in reader:
         symbol = row.get("Symbol", "").strip()
         qty    = _num(row.get("Shares"))
         cost   = _num(row.get("CostBasis"))
-        name   = row.get("Account", "").strip()
 
         if not symbol or qty is None:
             continue
@@ -136,14 +125,14 @@ def parse_betterment(content: str) -> list[dict]:
         total_cost = agg["total_cost"]
         cost_per   = (total_cost / shares) if shares > 0 else None
         results.append(_row(
-            ticker     = ticker,
-            name       = None,
-            shares     = shares,
+            ticker         = ticker,
+            name           = None,
+            shares         = shares,
             cost_per_share = cost_per,
-            total_cost = total_cost,
-            broker     = "betterment",
-            as_of      = today,
-            asset_type = "etf",
+            total_cost     = total_cost,
+            broker         = "betterment",
+            as_of          = today,
+            asset_type     = "etf",
         ))
     return results
 
@@ -151,27 +140,14 @@ def parse_betterment(content: str) -> list[dict]:
 # ── Fidelity parser ───────────────────────────────────────────────────────────
 
 def parse_fidelity(content: str) -> list[dict]:
-    """
-    Position-level. Handles all Fidelity account types:
-    - Standard: tickers, skip FDRXX** etc.
-    - Dell 401k: no tickers, description-only funds
-    - SNPS 401k: mix of tickers and CUSIPs, skip BROKERAGELINK
-    Footer disclaimer rows are skipped.
-    Columns: Account Number, Account Name, Symbol, Description, Quantity,
-             Last Price, Last Price Change, Current Value, ...,
-             Cost Basis Total, Average Cost Basis, Type
-    """
-    # Strip BOM
     content  = content.lstrip('\ufeff')
     as_of    = _fidelity_date(content)
     results  = []
 
-    # Split into lines, parse only header + data rows (stop at footer)
-    lines    = content.splitlines()
+    lines      = content.splitlines()
     data_lines = []
     for line in lines:
         stripped = line.strip()
-        # Footer rows start with a quote and contain disclaimer text
         if stripped.startswith('"') and len(stripped) > 50:
             break
         data_lines.append(line)
@@ -185,15 +161,11 @@ def parse_fidelity(content: str) -> list[dict]:
         avg_cost = _num(row.get("Average Cost Basis"))
         tot_cost = _num(row.get("Cost Basis Total"))
 
-        # Skip money market and special rows
         if _should_skip(symbol or desc, row.get("Quantity")):
             continue
-
-        # Skip BROKERAGELINK pointer row (actual positions in separate file)
         if symbol.upper() == "BROKERAGELINK":
             continue
 
-        # Dell-style: no ticker symbol, only description
         if not symbol and desc:
             results.append(_row(
                 ticker         = desc,
@@ -204,11 +176,10 @@ def parse_fidelity(content: str) -> list[dict]:
                 broker         = "fidelity",
                 as_of          = as_of,
                 asset_type     = "fund_nontickered",
-                yf_ticker      = None,  # no yfinance lookup
+                yf_ticker      = None,
             ))
             continue
 
-        # CUSIP in symbol column
         if _is_cusip(symbol):
             results.append(_row(
                 ticker         = symbol,
@@ -219,11 +190,10 @@ def parse_fidelity(content: str) -> list[dict]:
                 broker         = "fidelity",
                 as_of          = as_of,
                 asset_type     = "fund_cusip",
-                yf_ticker      = None,  # no yfinance lookup
+                yf_ticker      = None,
             ))
             continue
 
-        # Normal ticker
         results.append(_row(
             ticker         = symbol,
             name           = desc,
@@ -232,7 +202,7 @@ def parse_fidelity(content: str) -> list[dict]:
             total_cost     = tot_cost,
             broker         = "fidelity",
             as_of          = as_of,
-            asset_type     = "etf",   # yfinance will refine this
+            asset_type     = "etf",
         ))
 
     return results
@@ -241,11 +211,6 @@ def parse_fidelity(content: str) -> list[dict]:
 # ── M1 Finance parser ─────────────────────────────────────────────────────────
 
 def parse_m1(content: str) -> list[dict]:
-    """
-    Position-level, clean.
-    Columns: Symbol, Name, Quantity, Avg. Price, Cost Basis,
-             Unrealized Gain ($), Unrealized Gain (%), Value
-    """
     reader  = csv.DictReader(io.StringIO(content))
     results = []
     today   = date.today()
@@ -268,7 +233,7 @@ def parse_m1(content: str) -> list[dict]:
             total_cost     = tot_cost,
             broker         = "m1",
             as_of          = today,
-            asset_type     = "stock",  # yfinance will refine
+            asset_type     = "stock",
         ))
 
     return results
@@ -277,37 +242,22 @@ def parse_m1(content: str) -> list[dict]:
 # ── Empower PDF parser ────────────────────────────────────────────────────────
 
 def parse_empower_pdf(pdf_bytes: bytes) -> list[dict]:
-    """
-    Parse Empower monthly report PDF.
-    Extracts holdings table from Account Holdings pages.
-    Columns in PDF: Name | Symbol | Price | Quantity | Market Value | % of Account
-    No cost basis available in Empower reports.
-    as_of_date extracted from PDF header: 'As of Date :MM/DD/YYYY'
-    """
     import pdfplumber
 
     as_of   = date.today()
     results = []
 
-    # Skip these pseudo-rows
     SKIP_NAMES = {
         "US DOLLARS AND MONEY FUND SWEEPS",
         "Total Cash and Cash Equivalents",
-        "Total Equity",
-        "Total Fixed Income",
-        "Total Account",
-        "Cash and Cash Equivalents",
-        "Equity",
-        "Fixed Income",
+        "Total Equity", "Total Fixed Income", "Total Account",
+        "Cash and Cash Equivalents", "Equity", "Fixed Income",
         "Account Type: Individual",
     }
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        full_text = ""
-        for page in pdf.pages:
-            full_text += (page.extract_text() or "") + "\n"
+        full_text = "\n".join(p.extract_text() or "" for p in pdf.pages)
 
-        # Extract as-of date from header text
         m = re.search(r'As of Date\s*:?\s*(\d{2}/\d{2}/\d{4})', full_text)
         if m:
             try:
@@ -315,25 +265,15 @@ def parse_empower_pdf(pdf_bytes: bytes) -> list[dict]:
             except ValueError:
                 pass
 
-        # Parse tables from all pages
         for page in pdf.pages:
             tables = page.extract_tables()
             for table in tables:
                 for row in table:
                     if not row or len(row) < 4:
                         continue
-
-                    # Clean all cells
                     cells = [str(c).strip() if c else "" for c in row]
+                    name  = cells[0] if cells else ""
 
-                    # Try to find symbol and quantity
-                    # Empower table layout: Name | Symbol | Price | Quantity | MV | %
-                    # Symbol is typically 2-5 uppercase letters
-                    symbol = None
-                    qty    = None
-                    name   = cells[0] if cells else ""
-
-                    # Skip header/total rows
                     if name in SKIP_NAMES or not name:
                         continue
                     if name.startswith("Account Holdings"):
@@ -341,7 +281,9 @@ def parse_empower_pdf(pdf_bytes: bytes) -> list[dict]:
                     if name.startswith("Report Legend"):
                         continue
 
-                    # Find symbol in row (2-5 uppercase letters)
+                    symbol = None
+                    qty    = None
+
                     for cell in cells[1:]:
                         cell_clean = cell.strip()
                         if re.match(r'^[A-Z]{2,5}$', cell_clean) and not symbol:
@@ -360,21 +302,131 @@ def parse_empower_pdf(pdf_bytes: bytes) -> list[dict]:
                         ticker         = symbol,
                         name           = name,
                         shares         = qty,
-                        cost_per_share = None,   # not in Empower reports
+                        cost_per_share = None,
                         total_cost     = None,
                         broker         = "empower",
                         as_of          = as_of,
                         asset_type     = "etf",
                     ))
 
-    # Deduplicate by ticker (PDF may have same ticker on multiple pages)
     seen    = {}
     deduped = []
     for r in results:
         if r["ticker"] not in seen:
             seen[r["ticker"]] = True
             deduped.append(r)
+    return deduped
 
+
+# ── Robinhood PDF parser ──────────────────────────────────────────────────────
+
+def parse_robinhood_pdf(pdf_bytes: bytes) -> list[dict]:
+    """
+    Parse Robinhood monthly statement PDF using text extraction.
+    No tables in Robinhood PDFs - data is raw text.
+    Pattern per holding:
+      Line 1: Company Name
+      Line 2: TICKER  Margin|Cash  qty  $price  $mktval ...
+    Handles multi-account PDFs (e.g. Traditional + Roth in one file).
+    Skips accounts with $0 closing portfolio value.
+    As-of date: end date from MM/DD/YYYY to MM/DD/YYYY header.
+    """
+    import pdfplumber
+
+    as_of      = date.today()
+    results    = []
+    holding_re = re.compile(
+        r"^([A-Z]{1,5})\s+(Margin|Cash)\s+([\d,]+\.?\d*)\s+\$[\d,]+\.\d+"
+    )
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        # Extract all text once
+        all_pages_text = [p.extract_text() or "" for p in pdf.pages]
+        full_text      = "\n".join(all_pages_text)
+
+        # As-of date from: "03/01/2026 to 03/31/2026"
+        dm = re.search(r"\d{2}/\d{2}/\d{4}\s+to\s+(\d{2}/\d{2}/\d{4})", full_text)
+        if dm:
+            try:
+                as_of = datetime.strptime(dm.group(1), "%m/%d/%Y").date()
+            except ValueError:
+                pass
+
+        # Track which portfolio sections are non-empty
+        # Find all closing portfolio values — multi-account PDFs have multiple
+        # We process page by page and skip sections where portfolio value is $0
+        in_holdings      = False
+        current_nonempty = True
+        prev_line        = ""
+
+        for page_text in all_pages_text:
+            lines = page_text.splitlines()
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+
+                # Detect account section boundary — check portfolio value
+                pv = re.search(
+                    r"Portfolio Value\s+\$[\d,]+\.\d{2}\s+\$([\d,]+\.\d{2})",
+                    line
+                )
+                if pv:
+                    closing          = float(pv.group(1).replace(",", ""))
+                    current_nonempty = closing > 0.0
+                    in_holdings      = False
+                    prev_line        = ""
+                    continue
+
+                if "Securities Held in Account" in line:
+                    if current_nonempty:
+                        in_holdings = True
+                    prev_line = ""
+                    continue
+
+                if in_holdings and (
+                    "Loaned Securities" in line or
+                    line.startswith("Total Securities") or
+                    line.startswith("Brokerage Cash")
+                ):
+                    in_holdings = False
+                    continue
+
+                if not in_holdings:
+                    prev_line = line
+                    continue
+
+                if (line.startswith("Sym/Cusip") or
+                        line.startswith("Estimated Yield") or
+                        line.startswith("Page ")):
+                    continue
+
+                m = holding_re.match(line)
+                if m:
+                    symbol = m.group(1)
+                    qty    = _num(m.group(3))
+                    name   = prev_line if prev_line and not holding_re.match(prev_line) else symbol
+
+                    if symbol not in SKIP_SYMBOLS and not _is_cusip(symbol) and qty and qty > 0:
+                        results.append(_row(
+                            ticker         = symbol,
+                            name           = name,
+                            shares         = qty,
+                            cost_per_share = None,
+                            total_cost     = None,
+                            broker         = "robinhood",
+                            as_of          = as_of,
+                            asset_type     = "stock",
+                        ))
+
+                prev_line = line
+
+    seen    = {}
+    deduped = []
+    for r in results:
+        if r["ticker"] not in seen:
+            seen[r["ticker"]] = True
+            deduped.append(r)
     return deduped
 
 
@@ -382,23 +434,21 @@ def parse_empower_pdf(pdf_bytes: bytes) -> list[dict]:
 
 def parse_holdings(filename: str, content: bytes) -> list[dict]:
     """
-    Route to correct parser based on filename extension and content.
+    Route to correct parser based on filename and content.
     Returns normalized list of holding dicts ready for DB insert.
     """
     fname = filename.lower()
 
-    # PDF -> Empower
     if fname.endswith(".pdf"):
+        if "robinhood" in fname:
+            return parse_robinhood_pdf(content)
         return parse_empower_pdf(content)
 
-    # CSV -> detect broker from headers
-    text    = content.decode("utf-8", errors="replace")
-    # Strip BOM for header detection
-    sample  = text.lstrip('\ufeff')
+    text       = content.decode("utf-8", errors="replace")
+    sample     = text.lstrip('\ufeff')
     first_line = sample.splitlines()[0] if sample.splitlines() else ""
     headers    = first_line.split(",")
-
-    broker = detect_broker(headers)
+    broker     = detect_broker(headers)
 
     if broker == "betterment":
         return parse_betterment(sample)
@@ -413,7 +463,6 @@ def parse_holdings(filename: str, content: bytes) -> list[dict]:
 # ── Holdings hash (for analysis cache invalidation) ───────────────────────────
 
 def compute_holdings_hash(holdings: list[dict]) -> str:
-    """MD5 of sorted ticker+shares — detects when portfolio changed."""
     key = "|".join(
         f"{h['ticker']}:{h['shares']:.4f}"
         for h in sorted(holdings, key=lambda x: x['ticker'])
