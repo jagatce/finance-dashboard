@@ -1,90 +1,147 @@
 # FinanceOS
 
-A local-first personal finance dashboard. Track net worth, investments,
-retirement accounts, insurance, and spending — all stored privately on
-your own machine.
+> A local-first personal finance dashboard powered by Claude AI. Track net worth, investments, retirement accounts, insurance, and spending — all stored privately on your own machine.
 
-## Features
-- Net worth tracking over time with charts
-- Household support (self, spouse, children)
-- All account types: cash, taxable, retirement, HSA, alternatives
-- Liabilities: credit cards, loans
-- Insurance tracker (coming soon)
-- Spending breakdown (coming soon)
-- No cloud, no subscriptions, no ads
+**[▶ Live Demo](https://jagatce.github.io/finance-dashboard/)** · [GitHub](https://github.com/jagatce/finance-dashboard)
+
+---
+
+## What it does
+
+| Feature | Description |
+|---------|-------------|
+| **Net Worth** | Track balances across all accounts over time with charts and per-owner breakdown |
+| **Holdings** | Import broker CSVs/PDFs — Betterment, Fidelity, M1, Empower, Robinhood |
+| **AI Portfolio Analysis** | Claude analyzes your full portfolio — concentration flags, allocation, action items |
+| **Claude Sensor** | Per-ticker technicals (RSI, MACD, EMA200, Bollinger Bands) + buy/sell/watch signal |
+| **Cash Flow** | Income, spending, savings rate. Upload bank/credit card CSVs. Monthly AI review |
+| **Insurance** | Track all policies — life, health, auto. Coverage summary and renewal alerts |
+| **Backup & Restore** | One-click SQLite backup. Restore from any previous snapshot |
+
+---
+
+## Privacy first
+
+- All data lives in `backend/finance.db` on your machine
+- Nothing is sent to any server except Anthropic API calls for AI features
+- No cloud sync, no accounts, no subscriptions, no ads
+- Optional passphrase login and DB encryption
+
+---
 
 ## Quick Start
 
 ### Prerequisites
-- macOS or Linux
+
 - Python 3.12+
 - Node.js 18+
-- SQLCipher
-- uv
+- [uv](https://github.com/astral-sh/uv)
 
-### Install everything at once
+### Backend
 
-    git clone https://github.com/YOUR_USERNAME/finance-dashboard.git
-    cd finance-dashboard
-    bash setup.sh
+```bash
+cd backend
+uv sync
+uv pip install "curl-cffi==0.7.4"
+cp .env.example .env
+# Edit .env — add ANTHROPIC_API_KEY for AI features
+.venv/bin/uvicorn main:app --reload --port 8000
+```
 
-### Run the app
+### Frontend
 
-**Terminal 1 — Backend:**
-
-    cd backend
-    uv run uvicorn main:app --reload --port 8000
-
-**Terminal 2 — Frontend:**
-
-    cd frontend
-    npm run dev
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
 Open **http://localhost:3000**
 
-## Moving to a New Machine
-1. Clone the repo on the new machine
-2. Run `bash setup.sh`
-3. Copy your `backend/finance.db` file manually — this is your data
-4. Run the app
+---
 
-## Privacy & Security
-- All data lives in `backend/finance.db` on your machine
-- The database file is excluded from git
-- Nothing is ever sent to any server
-- Optional encryption: set `DB_PASSPHRASE` in `backend/.env`
+## Environment Variables
 
-## Project Structure
+`backend/.env`:
+LOGIN_PASSPHRASE=your-passphrase
+DB_PASSPHRASE=
+ANTHROPIC_API_KEY=sk-ant-...
 
-    finance-dashboard/
-    ├── backend/          # Python / FastAPI
-    │   ├── app/
-    │   │   ├── api/v1/   # API endpoints
-    │   │   ├── models/   # Database models
-    │   │   └── core/     # Config, DB connection
-    │   ├── main.py
-    │   └── .env.example
-    ├── frontend/         # Next.js / React
-    │   ├── app/          # Pages
-    │   └── components/   # Shared components
-    ├── setup.sh          # One-command setup
-    ├── CLAUDE.md         # AI context file
-    └── README.md
+Get an Anthropic API key at [console.anthropic.com](https://console.anthropic.com)
+
+---
+
+## Supported Broker Imports
+
+| Broker | Format | Cost Basis | Notes |
+|--------|--------|------------|-------|
+| Betterment | CSV | Yes | Lot-level, auto-aggregated by ticker |
+| Fidelity | CSV | Yes | All variants including 401k nontickered funds |
+| M1 Finance | CSV | Yes | |
+| Empower | PDF | No | Price and market value extracted from PDF |
+| Robinhood | PDF | No | Monthly statement, multi-account aware |
+
+---
 
 ## Tech Stack
+
 - **Backend:** Python 3.12, FastAPI, SQLAlchemy, SQLite
 - **Frontend:** Next.js 16, TypeScript, Tailwind CSS, Recharts
-- **Database:** SQLite (SQLCipher for encryption)
+- **AI:** Anthropic Claude Haiku — portfolio analysis and per-ticker signals
+- **Prices:** yfinance with 24h cache
+
+---
+
+## Project Structure
+finance-dashboard/
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/        — REST endpoints
+│   │   ├── models/        — SQLAlchemy models
+│   │   ├── services/      — holdings, prices, sensor, analysis
+│   │   └── core/          — config, database, auth
+│   └── main.py
+├── frontend/
+│   ├── app/               — Next.js pages
+│   └── components/        — Sidebar, AuthGuard, LayoutShell
+├── docs/
+│   └── index.html         — Interactive demo (GitHub Pages)
+└── CLAUDE.md              — AI context file for resuming development
+
+---
+
+## Roadmap
+
+- [x] Net worth tracking with history and charts
+- [x] Holdings import — 5 brokers
+- [x] AI portfolio analysis
+- [x] Claude Sensor — per-ticker technicals and signals
+- [ ] Cash Flow — income, spending, savings rate
+- [ ] Monthly AI review
+- [ ] Insurance tracker
+- [ ] Retirement projections
+- [ ] DB encryption with SQLCipher
+
+Current version: **v0.8.0**
+
+---
 
 ## Development
 
-    # Create a feature branch
-    git checkout dev
-    git checkout -b feature/my-feature
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/my-feature
+# build and test
+git checkout main
+git merge feature/my-feature
+git tag v0.x.0
+git push origin main --tags
+```
 
-    # After building and testing
-    git checkout dev
-    git merge feature/my-feature
-    git checkout main
-    git merge dev
-    git tag v0.x.0
+## Moving to a New Machine
+
+1. Clone the repo
+2. Run backend and frontend setup above
+3. Copy `backend/finance.db` from your old machine — this is all your data
+4. Set up `backend/.env` with your passphrase and API key
