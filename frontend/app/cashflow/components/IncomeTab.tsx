@@ -32,13 +32,13 @@ export default function IncomeTab({ month }: Props) {
   async function fetchIncome() {
     setLoading(true);
     try {
-      const data = await apiFetch(`/api/v1/cashflow/income?month=${month}`);
+      const data = await (await apiFetch(`/api/v1/cashflow/income?month=${month}`)).json();
       setEntries(Array.isArray(data) ? data : []);
     } finally { setLoading(false); }
   }
 
   async function fetchOwners() {
-    const data = await apiFetch("/api/v1/owners/");
+    const data = await (await apiFetch("/api/v1/owners/")).json();
     setOwners(Array.isArray(data) ? data : []);
   }
 

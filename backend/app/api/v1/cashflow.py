@@ -151,14 +151,25 @@ async def import_csv(
         t["_tmp_id"] = str(i)
         t["account_id"] = account_id
 
-    return {"bank": result["bank"], "transactions": result["transactions"]}
+    for i, t in enumerate(result.get("income", [])):
+        t["_tmp_id"] = str(i)
+
+    return {
+        "bank": result["bank"],
+        "transactions": result["transactions"],
+        "income": result.get("income", []),
+    }
 
 
 @router.post("/transactions/import/confirm")
 def confirm_import(body: dict, db: Session = Depends(get_db), _=Depends(require_auth)):
-    """Save confirmed (and possibly edited) transactions to DB."""
-    txns = body.get("transactions", [])
-    saved = 0
+    """Save confirmed spending transactions + income rows to DB."""
+    txns         = body.get("transactions", [])
+    income_rows  = body.get("income", [])
+    saved_txns   = 0
+    saved_income = 0
+
+    # Save spending transactions
     for t in txns:
         tid = str(uuid.uuid4())
         db.execute(text("""
@@ -185,9 +196,30 @@ def confirm_import(body: dict, db: Session = Depends(get_db), _=Depends(require_
             "is_recurring": t.get("is_recurring", False),
             "created_at": datetime.utcnow().isoformat(),
         })
-        saved += 1
+        saved_txns += 1
+
+    # Save income rows to income_transactions
+    for inc in income_rows:
+        iid = str(uuid.uuid4())
+        db.execute(text("""
+            INSERT INTO income_transactions
+              (id, owner_id, date, source_name, income_type, amount, notes, created_at)
+            VALUES
+              (:id, :owner_id, :date, :source_name, :income_type, :amount, :notes, :created_at)
+        """), {
+            "id": iid,
+            "owner_id":    inc.get("owner_id") or inc.get("owner_hint") or "",
+            "date":        inc.get("transaction_date", ""),
+            "source_name": inc.get("description", ""),
+            "income_type": inc.get("income_type", "other"),
+            "amount":      float(inc.get("amount", 0)),
+            "notes":       inc.get("full_description"),
+            "created_at":  datetime.utcnow().isoformat(),
+        })
+        saved_income += 1
+
     db.commit()
-    return {"saved": saved}
+    return {"saved_transactions": saved_txns, "saved_income": saved_income}
 
 
 # ---------------------------------------------------------------------------

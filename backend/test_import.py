@@ -65,3 +65,39 @@ def run():
 
 if __name__ == "__main__":
     run()
+
+def run_bofa():
+    from app.services.cashflow_import import parse_transactions
+    import os
+
+    DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_data", "spending")
+    files = [
+        "Bofa checking stmt.csv",
+        "Bofa checking stmt (1).csv",
+        "Bofa checking stmt (2).csv",
+    ]
+
+    print("\n=== BofA Checking ===")
+    for filename in files:
+        path = os.path.join(DATA_DIR, filename)
+        with open(path, "rb") as f:
+            content = f.read()
+        result = parse_transactions(filename, content)
+        if result["error"]:
+            print(f"  FAIL {filename}: {result['error']}")
+            continue
+
+        txns   = result["transactions"]
+        income = result.get("income", [])
+        print(f"\n  FILE: {filename}")
+        print(f"  bank={result['bank']}  spending={len(txns)}  income={len(income)}")
+        print(f"  --- SPENDING ---")
+        for t in txns[:5]:
+            print(f"    {t['transaction_date']}  ${t['amount']:>8.2f}  {t['description'][:60]}")
+        print(f"  --- INCOME ---")
+        for t in income:
+            print(f"    {t['transaction_date']}  ${t['amount']:>8.2f}  {t['description'][:60]}")
+
+if __name__ == "__main__":
+    run()
+    run_bofa()

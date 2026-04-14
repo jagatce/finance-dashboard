@@ -34,7 +34,7 @@ export default function MonthlyReviewTab({ month }: Props) {
   async function fetchReview() {
     setLoading(true);
     try {
-      const data = await apiFetch(`/api/v1/cashflow/reviews?month=${month}`);
+      const data = await (await apiFetch(`/api/v1/cashflow/reviews?month=${month}`)).json();
       setReview(data && data.exists ? data.review : null);
     } finally { setLoading(false); }
   }
@@ -42,11 +42,11 @@ export default function MonthlyReviewTab({ month }: Props) {
   async function handleGenerate() {
     setGenerating(true);
     try {
-      const data = await apiFetch("/api/v1/cashflow/reviews/generate", {
+      const data = await (await apiFetch("/api/v1/cashflow/reviews/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ month }),
-      });
+      })).json();
       setReview({ notes: data.review, ...data.stats, generated_at: new Date().toISOString() });
     } finally { setGenerating(false); }
   }

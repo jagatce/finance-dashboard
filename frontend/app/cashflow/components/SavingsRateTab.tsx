@@ -48,7 +48,7 @@ export default function SavingsRateTab({ month }: Props) {
   async function fetchSummary() {
     setLoading(true);
     try {
-      const d = await apiFetch(`/api/v1/cashflow/summary?year=${year}`);
+      const d = await (await apiFetch(`/api/v1/cashflow/summary?year=${year}`)).json();
       setData(Array.isArray(d) ? d : []);
     } finally { setLoading(false); }
   }
@@ -134,7 +134,7 @@ export default function SavingsRateTab({ month }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false}
-                tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                tickFormatter={(v: number) => `$${(v/1000).toFixed(0)}k`} />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="income"   fill="#4f46e5" radius={[4, 4, 0, 0]} />
               <Bar dataKey="spending" fill="#fca5a5" radius={[4, 4, 0, 0]} />
