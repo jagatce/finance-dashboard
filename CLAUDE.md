@@ -231,7 +231,64 @@ Without this all /api/v1/* calls return 404 from Next.js.
 
 ## Next Areas — Prioritized
 
-### Priority 1: /spending (next session)
+## Cash Flow Feature — Complete (v0.9.0) ✅
+- /cashflow page: 4 tabs — Spending, Income, Savings Rate, Monthly Review
+- Sidebar: Planning > Cash Flow (replaces unbuilt /spending)
+- Month picker shared across all tabs
+
+### Spending Tab
+- CSV import: Chase, Amex, BofA parsers (cashflow_import.py)
+- Account picker dropdown (credit_card + checking accounts only)
+- Stack multiple CSVs before saving
+- Claude auto-categorize (batch, one API call per upload)
+- Save As-Is or Categorize first — two separate buttons
+- Manual add/edit/delete transactions
+- Inline category override on imported rows
+- BofA: auto-splits into spending + income, skips CC payments (double-count prevention)
+- BofA: income signals (PAYROLL, DEPOSIT, SRECTRADE etc), skip signals (AMEX, CHASE payments)
+- BofA: owner auto-detected from INDN: field (PAREKH=JP, KANSARA=RK), editable in preview
+
+### Income Tab
+- Manual line-item income entry (salary, bonus, freelance, dividend, rental, other)
+- Per-person (owner) tracking
+- income_transactions table (new island, zero FK to existing tables)
+
+### Savings Rate Tab
+- Full year bar chart (Recharts) — savings rate % with 20% target line
+- Toggle: savings rate % view vs income/spending amounts view
+- Monthly breakdown table, current month highlighted
+- Summary cards: avg rate, total income, spending, saved
+
+### Monthly Review Tab
+- On-demand Claude synthesis (click Generate)
+- Pulls from 4 sources: transactions, income_transactions, net_worth_snapshots, ticker_analysis
+- Saved to reviews table (upsert by month)
+- Stats row: income, spending, saved, savings rate
+- Markdown rendered review with sections: Summary, Cash Flow, Net Worth, Portfolio, Action Items
+
+### New DB changes
+- transactions: ALTER ADD owner_id, source, is_recurring
+- income_transactions: new table (island)
+- reviews: reused existing table
+
+### New backend files
+- backend/app/api/v1/cashflow.py — 11 routes
+- backend/app/services/cashflow_import.py — Chase/Amex/BofA parsers
+
+### Test harness
+- backend/test_import.py — 10 CSV files, 10/10 passing
+- backend/test_categorize.py — Claude categorization against real data
+- backend/test_data/spending/ — real CSV files (gitignored)
+
+### Known issues / TODO
+- BofA owner_hint is a string label (JP/RK), not mapped to actual owner_id from owners table
+- npm run build has a Recharts tickFormatter type warning (non-blocking, works in dev)
+- spend_categories table is empty — using hardcoded default categories
+- /cashflow page not yet added to sidebar under Planning (currently replaces /spending)
+
+### Priority 1: /spending → now /cashflow (DONE)
+
+### Priority 2: /reviews (next session)
 IMPORTANT — check existing tables before creating new ones:
   - spend_categories table already exists (check schema before using)
   - reviews table already exists (check schema before using)
