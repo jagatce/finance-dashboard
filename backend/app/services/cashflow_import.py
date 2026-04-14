@@ -1,5 +1,6 @@
 import io
 import csv
+import html
 from datetime import datetime
 from typing import List, Dict, Any
 
@@ -8,10 +9,13 @@ def detect_bank(headers: List[str]) -> str:
     h = [x.strip().lower() for x in headers]
     if "transaction date" in h and "post date" in h:
         return "chase"
-    if "date" in h and "description" in h and "card member" in h:
-        return "amex"
     if "date" in h and "description" in h and "running bal." in h:
         return "bofa"
+    # Amex: exactly Date, Description, Amount (no other columns)
+    if sorted(h) == sorted(["date", "description", "amount"]):
+        return "amex"
+    if "date" in h and "description" in h and "card member" in h:
+        return "amex"
     return "unknown"
 
 
@@ -41,8 +45,8 @@ def _parse_chase(rows: List[Dict]) -> List[Dict]:
             out.append({
                 "transaction_date": _parse_date(r.get("Transaction Date", "")),
                 "posted_date":      _parse_date(r.get("Post Date", "")),
-                "description":      r.get("Description", "").strip(),
-                "merchant":         r.get("Description", "").strip(),
+                "description":      html.unescape(r.get("Description", "").strip()),
+                "merchant":         html.unescape(r.get("Description", "").strip()),
                 "amount":           abs(amount),
                 "category":         r.get("Category", "").strip() or None,
                 "source":           "chase",
@@ -63,8 +67,8 @@ def _parse_amex(rows: List[Dict]) -> List[Dict]:
             out.append({
                 "transaction_date": _parse_date(r.get("Date", "")),
                 "posted_date":      None,
-                "description":      r.get("Description", "").strip(),
-                "merchant":         r.get("Description", "").strip(),
+                "description":      html.unescape(r.get("Description", "").strip()),
+                "merchant":         html.unescape(r.get("Description", "").strip()),
                 "amount":           amount,
                 "category":         r.get("Category", "").strip() or None,
                 "source":           "amex",
@@ -85,8 +89,8 @@ def _parse_bofa(rows: List[Dict]) -> List[Dict]:
             out.append({
                 "transaction_date": _parse_date(r.get("Date", "")),
                 "posted_date":      None,
-                "description":      r.get("Description", "").strip(),
-                "merchant":         r.get("Description", "").strip(),
+                "description":      html.unescape(r.get("Description", "").strip()),
+                "merchant":         html.unescape(r.get("Description", "").strip()),
                 "amount":           abs(amount),
                 "category":         None,
                 "source":           "bofa",
