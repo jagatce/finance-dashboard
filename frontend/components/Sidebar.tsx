@@ -39,7 +39,7 @@ const nav = [
     label: "Planning",
     items: [
       { href: "/insurance", label: "Insurance", icon: Shield },
-      { href: "/spending",  label: "Spending",  icon: BarChart3 },
+      { href: "/cashflow", label: "Cash Flow", icon: TrendingUp },
       { href: "/reviews",   label: "Reviews",   icon: BarChart3 },
     ],
   },
