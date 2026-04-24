@@ -347,6 +347,18 @@ def create_income(body: IncomeIn, db: Session = Depends(get_db), _=Depends(requi
     return {"id": iid, "status": "created"}
 
 
+@router.put("/income/{iid}")
+def update_income(iid: str, body: dict, db: Session = Depends(get_db), _=Depends(require_auth)):
+    fields = {k: v for k, v in body.items() if k in ("owner_id", "income_type", "source_name", "amount", "notes")}
+    if not fields:
+        raise HTTPException(400, "Nothing to update")
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+    fields["iid"] = iid
+    db.execute(text(f"UPDATE income_transactions SET {set_clause} WHERE id = :iid"), fields)
+    db.commit()
+    return {"status": "updated"}
+
+
 @router.delete("/income/{iid}")
 def delete_income(iid: str, db: Session = Depends(get_db), _=Depends(require_auth)):
     db.execute(text("DELETE FROM income_transactions WHERE id = :iid"), {"iid": iid})
