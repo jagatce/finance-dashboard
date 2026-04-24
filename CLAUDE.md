@@ -280,11 +280,23 @@ Without this all /api/v1/* calls return 404 from Next.js.
 - backend/test_categorize.py — Claude categorization against real data
 - backend/test_data/spending/ — real CSV files (gitignored)
 
+### Spending Tab — Additional Features (this session)
+- Category breakdown panel (pie + horizontal bar chart, Recharts)
+- Click category to filter transaction list — chip shown in summary bar
+- Monthly trends panel — grouped bar chart per account, full year
+- Import History panel — shows all import batches (filename, account, bank, count, date)
+- Filter by batch — BarChart2 icon per row filters transaction list to that batch
+- Delete by batch — removes all transactions for that file regardless of month span
+- import_batches table — reusable pattern for holdings/401k/HSA future imports
+- transactions.batch_id — FK to import_batches, set on every imported row
+- GET /api/v1/cashflow/imports — returns import_batches records
+- DELETE /api/v1/cashflow/imports/{batch_id} — deletes batch + all transactions
+- GET /api/v1/cashflow/trends — monthly spend per account for full year
+
 ### Known issues / TODO
-- BofA owner_hint is a string label (JP/RK), not mapped to actual owner_id from owners table
 - npm run build has a Recharts tickFormatter type warning (non-blocking, works in dev)
 - spend_categories table is empty — using hardcoded default categories
-- /cashflow page not yet added to sidebar under Planning (currently replaces /spending)
+- Existing transactions imported before batch_id was added have no batch_id (fixed by reimport)
 
 ### Priority 1: /spending → now /cashflow (DONE)
 
@@ -358,6 +370,6 @@ Before writing any code, always confirm branch and create a feature branch:
   git checkout -b feature/<name>   # e.g. feature/insurance, feature/spending
   git log --oneline -3
 
-Current stable base: main (v0.8.0)
-Holdings + Claude Sensor are complete and merged to main.
+Current stable base: main (v0.9.0-cashflow)
+Holdings + Claude Sensor + Cash Flow are complete and merged to main.
 All new features should branch from main.
