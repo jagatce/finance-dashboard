@@ -20,6 +20,7 @@ interface Transaction {
   notes?: string;
   source?: string;
   is_recurring?: boolean;
+  batch_id?: string;
 }
 
 interface Props { month: string; }
@@ -46,9 +47,14 @@ export default function SpendingTab({ month }: Props) {
   const [loading, setLoading]           = useState(true);
   const [showAddForm, setShowAddForm]   = useState(false);
   const [activeFilter, setActiveFilter] = useState<string|null>(null);
-  const [activePanel, setActivePanel]   = useState<null|"breakdown"|"trends">(null);
+  const [batchFilter, setBatchFilter]   = useState<string|null>(null);
+  const [batchFilterName, setBatchFilterName] = useState<string>("");
+  const [activePanel, setActivePanel]   = useState<null|"breakdown"|"trends"|"imports">(null);
   const [trendsData, setTrendsData]     = useState<any[]>([]);
   const [trendsLoading, setTrendsLoading] = useState(false);
+  const [importsData, setImportsData]     = useState<any[]>([]);
+  const [importsLoading, setImportsLoading] = useState(false);
+  const [deletingKey, setDeletingKey]     = useState<string|null>(null);
 
   // CSV import state
   const [importRows, setImportRows]       = useState<Transaction[]>([]);
@@ -56,6 +62,8 @@ export default function SpendingTab({ month }: Props) {
   const [importSection, setImportSection] = useState<"spending"|"income">("spending");
   const [importStage, setImportStage]     = useState<"idle"|"preview"|"categorizing">("idle");
   const [importBank, setImportBank]       = useState("");
+  const [importBatchId, setImportBatchId] = useState<string|null>(null);
+  const [importFilename, setImportFilename] = useState<string>("");
   const [saveMsg, setSaveMsg]             = useState<string|null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -98,10 +106,30 @@ export default function SpendingTab({ month }: Props) {
     } finally { setTrendsLoading(false); }
   }
 
-  function togglePanel(panel: "breakdown"|"trends") {
+  async function fetchImports() {
+    setImportsLoading(true);
+    try {
+      const data = await (await apiFetch("/api/v1/cashflow/imports")).json();
+      setImportsData(Array.isArray(data) ? data : []);
+    } finally { setImportsLoading(false); }
+  }
+
+  async function handleDeleteImport(batch_id: string, filename: string, row_count: number) {
+    if (!confirm(`Delete "${filename}" (${row_count} transactions)? This cannot be undone.`)) return;
+    setDeletingKey(batch_id);
+    try {
+      await apiFetch(`/api/v1/cashflow/imports/${batch_id}`, { method: "DELETE" });
+      await fetchImports();
+      await fetchTransactions();
+      if (activePanel === "trends") fetchTrends();
+    } finally { setDeletingKey(null); }
+  }
+
+  function togglePanel(panel: "breakdown"|"trends"|"imports") {
     if (activePanel === panel) { setActivePanel(null); return; }
     setActivePanel(panel);
     if (panel === "trends" && trendsData.length === 0) fetchTrends();
+    if (panel === "imports") fetchImports();
   }
 
   async function fetchOwners() {
@@ -157,6 +185,8 @@ export default function SpendingTab({ month }: Props) {
     const data = await res.json();
     if (!res.ok || data.error) { alert(data.error || data.detail || "Import failed"); return; }
     setImportBank(data.bank || "unknown");
+    setImportBatchId(data.batch_id || null);
+    setImportFilename(prev => prev || data.filename || "");
     setImportRows(prev => [...prev, ...(Array.isArray(data.transactions) ? data.transactions : [])]);
     setImportIncome(prev => [...prev, ...(Array.isArray(data.income) ? data.income : [])]);
     setImportSection("spending");
@@ -186,13 +216,20 @@ export default function SpendingTab({ month }: Props) {
     await apiFetch("/api/v1/cashflow/transactions/import/confirm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transactions: importRows, income: importIncome }),
+      body: JSON.stringify({
+        transactions: importRows,
+        income: importIncome,
+        batch_id: importBatchId,
+        filename: importFilename,
+      }),
     });
     const msg = `Saved ${importRows.length} transactions${importIncome.length ? ` + ${importIncome.length} income entries` : ""}`;
     setSaveMsg(msg);
     setImportStage("idle");
     setImportRows([]);
     setImportIncome([]);
+    setImportBatchId(null);
+    setImportFilename("");
     setTimeout(() => setSaveMsg(null), 4000);
     fetchTransactions();
   }
@@ -227,9 +264,9 @@ export default function SpendingTab({ month }: Props) {
     return entry;
   });
 
-  const filteredTransactions = activeFilter
-    ? transactions.filter(t => (t.category || "Uncategorized") === activeFilter)
-    : transactions;
+  const filteredTransactions = transactions
+    .filter(t => !activeFilter || (t.category || "Uncategorized") === activeFilter)
+    .filter(t => !batchFilter || (t as any).batch_id === batchFilter);
 
   const total = transactions.reduce((s, t) => s + t.amount, 0);
   const filteredTotal = filteredTransactions.reduce((s, t) => s + t.amount, 0);
@@ -245,6 +282,12 @@ export default function SpendingTab({ month }: Props) {
             <span className="flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">
               {activeFilter}
               <button onClick={() => setActiveFilter(null)}><X className="w-3 h-3" /></button>
+            </span>
+          )}
+          {batchFilter && (
+            <span className="flex items-center gap-1 text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">
+              {batchFilterName}
+              <button onClick={() => { setBatchFilter(null); setBatchFilterName(""); }}><X className="w-3 h-3" /></button>
             </span>
           )}
         </div>
@@ -285,15 +328,17 @@ export default function SpendingTab({ month }: Props) {
         {/* Panel toggles — only show when there are transactions */}
         {transactions.length > 0 && (
           <div className="ml-auto flex gap-1">
-            {(["breakdown", "trends"] as const).map(panel => (
+            {(["breakdown", "trends", "imports"] as const).map(panel => (
               <button key={panel} onClick={() => togglePanel(panel)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border transition-colors ${
                   activePanel === panel
                     ? "bg-indigo-600 text-white border-indigo-600"
                     : "border-gray-300 text-gray-600 hover:bg-gray-50"
                 }`}>
-                {panel === "breakdown" ? <BarChart2 className="w-3.5 h-3.5" /> : <TrendingUp className="w-3.5 h-3.5" />}
-                {panel === "breakdown" ? "Breakdown" : "Trends"}
+                {panel === "breakdown" ? <BarChart2 className="w-3.5 h-3.5" /> :
+                 panel === "trends" ? <TrendingUp className="w-3.5 h-3.5" /> :
+                 <Trash2 className="w-3.5 h-3.5" />}
+                {panel === "breakdown" ? "Breakdown" : panel === "trends" ? "Trends" : "Imports"}
               </button>
             ))}
           </div>
@@ -532,6 +577,76 @@ export default function SpendingTab({ month }: Props) {
                   ))}
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── IMPORTS PANEL ── */}
+      {activePanel === "imports" && (
+        <div className="border border-gray-200 rounded-lg p-4 bg-white space-y-3">
+          <p className="text-sm font-semibold text-gray-700">Import History</p>
+          {importsLoading ? (
+            <div className="flex items-center justify-center py-8 text-gray-400">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
+            </div>
+          ) : importsData.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-sm">No imports yet.</div>
+          ) : (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr className="text-left text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="px-4 py-2">File</th>
+                    <th className="px-4 py-2">Account</th>
+                    <th className="px-4 py-2">Bank</th>
+                    <th className="px-4 py-2 text-right">Transactions</th>
+                    <th className="px-4 py-2 text-right">Imported</th>
+                    <th className="px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {importsData.map((row, i) => (
+                    <tr key={i} className={`hover:bg-gray-50 ${batchFilter === row.batch_id ? "bg-amber-50" : ""}`}>
+                      <td className="px-4 py-2.5 text-gray-800 text-xs max-w-[160px] truncate" title={row.filename}>
+                        {row.filename || "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-600 text-xs">{row.account_name || row.account_id}</td>
+                      <td className="px-4 py-2.5">
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded capitalize">{row.bank}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-gray-600 text-xs">{row.row_count}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-400 text-xs">
+                        {row.imported_at ? new Date(row.imported_at).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => {
+                              if (batchFilter === row.batch_id) { setBatchFilter(null); setBatchFilterName(""); }
+                              else { setBatchFilter(row.batch_id); setBatchFilterName(row.filename || row.account_name); }
+                            }}
+                            className={`transition-colors ${batchFilter === row.batch_id ? "text-amber-500" : "text-gray-300 hover:text-amber-500"}`}
+                            title="Filter transactions to this import"
+                          >
+                            <BarChart2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteImport(row.batch_id, row.filename || row.batch_id, row.row_count)}
+                            disabled={deletingKey === row.batch_id}
+                            className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-50"
+                            title="Delete this import batch"
+                          >
+                            {deletingKey === row.batch_id
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <Trash2 className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

@@ -70,7 +70,7 @@ def get_transactions(month: str, db: Session = Depends(get_db), _=Depends(requir
     rows = db.execute(text("""
         SELECT id, account_id, transaction_date, posted_date, description,
                amount, category, subcategory, merchant, notes,
-               owner_id, source, is_recurring, created_at
+               owner_id, source, is_recurring, batch_id, created_at
         FROM transactions
         WHERE strftime('%Y-%m', transaction_date) = :month
         ORDER BY transaction_date DESC
@@ -146,16 +146,22 @@ async def import_csv(
     if result["error"]:
         raise HTTPException(400, result["error"])
 
-    # Attach a temp id to each for frontend tracking
+    # Generate batch_id for this upload
+    batch_id = str(uuid.uuid4())
+
+    # Attach temp ids and batch_id for frontend tracking
     for i, t in enumerate(result["transactions"]):
         t["_tmp_id"] = str(i)
         t["account_id"] = account_id
+        t["batch_id"] = batch_id
 
     for i, t in enumerate(result.get("income", [])):
         t["_tmp_id"] = str(i)
 
     return {
         "bank": result["bank"],
+        "batch_id": batch_id,
+        "filename": file.filename,
         "transactions": result["transactions"],
         "income": result.get("income", []),
     }
@@ -166,8 +172,35 @@ def confirm_import(body: dict, db: Session = Depends(get_db), _=Depends(require_
     """Save confirmed spending transactions + income rows to DB."""
     txns         = body.get("transactions", [])
     income_rows  = body.get("income", [])
+    batch_id     = body.get("batch_id") or str(uuid.uuid4())
+    filename     = body.get("filename", "")
     saved_txns   = 0
     saved_income = 0
+
+    # Derive account_id and bank from first transaction
+    account_id   = txns[0].get("account_id", "") if txns else ""
+    bank         = txns[0].get("source", "manual") if txns else "manual"
+
+    # Look up account name
+    acct_row = db.execute(text("SELECT name FROM accounts WHERE id = :id"), {"id": account_id}).fetchone()
+    account_name = acct_row.name if acct_row else account_id
+
+    # Save import_batches record
+    db.execute(text("""
+        INSERT OR REPLACE INTO import_batches
+          (id, source_type, filename, account_id, account_name, bank, row_count, income_count, imported_at)
+        VALUES
+          (:id, 'transactions', :filename, :account_id, :account_name, :bank, :row_count, :income_count, :imported_at)
+    """), {
+        "id": batch_id,
+        "filename": filename,
+        "account_id": account_id,
+        "account_name": account_name,
+        "bank": bank,
+        "row_count": len(txns),
+        "income_count": len(income_rows),
+        "imported_at": datetime.utcnow().isoformat(),
+    })
 
     # Save spending transactions
     for t in txns:
@@ -176,11 +209,11 @@ def confirm_import(body: dict, db: Session = Depends(get_db), _=Depends(require_
             INSERT INTO transactions
               (id, account_id, transaction_date, posted_date, description,
                amount, category, subcategory, merchant,
-               owner_id, source, is_recurring, created_at)
+               owner_id, source, is_recurring, batch_id, created_at)
             VALUES
               (:id, :account_id, :transaction_date, :posted_date, :description,
                :amount, :category, :subcategory, :merchant,
-               :owner_id, :source, :is_recurring, :created_at)
+               :owner_id, :source, :is_recurring, :batch_id, :created_at)
         """), {
             "id": tid,
             "account_id": t.get("account_id", ""),
@@ -194,6 +227,7 @@ def confirm_import(body: dict, db: Session = Depends(get_db), _=Depends(require_
             "owner_id": t.get("owner_id"),
             "source": t.get("source", "manual"),
             "is_recurring": t.get("is_recurring", False),
+            "batch_id": batch_id,
             "created_at": datetime.utcnow().isoformat(),
         })
         saved_txns += 1
@@ -219,7 +253,7 @@ def confirm_import(body: dict, db: Session = Depends(get_db), _=Depends(require_
         saved_income += 1
 
     db.commit()
-    return {"saved_transactions": saved_txns, "saved_income": saved_income}
+    return {"saved_transactions": saved_txns, "saved_income": saved_income, "batch_id": batch_id}
 
 
 # ---------------------------------------------------------------------------
@@ -357,6 +391,46 @@ def get_summary(year: str, db: Session = Depends(get_db), _=Depends(require_auth
         })
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# IMPORT HISTORY
+# ---------------------------------------------------------------------------
+
+@router.get("/imports")
+def get_imports(db: Session = Depends(get_db), _=Depends(require_auth)):
+    """Returns import history from import_batches table."""
+    sql = """
+        SELECT
+            b.id as batch_id,
+            b.filename,
+            b.account_id,
+            b.account_name,
+            b.bank,
+            b.row_count,
+            b.income_count,
+            b.imported_at,
+            b.source_type
+        FROM import_batches b
+        ORDER BY b.imported_at DESC
+    """
+    rows = db.execute(text(sql)).fetchall()
+    return [dict(r._mapping) for r in rows]
+
+
+@router.delete("/imports/{batch_id}")
+def delete_import_batch(
+    batch_id: str,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    """Delete all transactions for a batch and remove the batch record."""
+    result = db.execute(text("""
+        DELETE FROM transactions WHERE batch_id = :batch_id
+    """), {"batch_id": batch_id})
+    db.execute(text("DELETE FROM import_batches WHERE id = :id"), {"id": batch_id})
+    db.commit()
+    return {"deleted": result.rowcount}
 
 
 # ---------------------------------------------------------------------------
