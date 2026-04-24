@@ -1,8 +1,11 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { apiFetch } from "@/lib/auth";
-import { getToken } from "@/lib/auth";
-import { Upload, Plus, Trash2, Check, X, Loader2 } from "lucide-react";
+import { apiFetch, getToken } from "@/lib/auth";
+import { Upload, Plus, Trash2, Check, X, Loader2, BarChart2, TrendingUp } from "lucide-react";
+import {
+  PieChart, Pie, Cell, Tooltip as ReTooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend
+} from "recharts";
 
 interface Transaction {
   id?: string;
@@ -23,29 +26,44 @@ interface Props { month: string; }
 
 const DEFAULT_ACCOUNT_ID = "manual";
 
+const COLORS = [
+  "#4f46e5","#7c3aed","#db2777","#ea580c","#d97706",
+  "#65a30d","#0891b2","#0284c7","#6366f1","#8b5cf6",
+  "#ec4899","#f97316","#84cc16","#06b6d4","#94a3b8",
+];
+
+function shortMonth(m: string) {
+  const [y, mon] = m.split("-");
+  return new Date(parseInt(y), parseInt(mon) - 1).toLocaleString("default", { month: "short" });
+}
+
 export default function SpendingTab({ month }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories]     = useState<string[]>([]);
   const [accounts, setAccounts]         = useState<any[]>([]);
+  const [owners, setOwners]             = useState<any[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [loading, setLoading]           = useState(true);
   const [showAddForm, setShowAddForm]   = useState(false);
+  const [activeFilter, setActiveFilter] = useState<string|null>(null);
+  const [activePanel, setActivePanel]   = useState<null|"breakdown"|"trends">(null);
+  const [trendsData, setTrendsData]     = useState<any[]>([]);
+  const [trendsLoading, setTrendsLoading] = useState(false);
 
   // CSV import state
-  const [importRows, setImportRows]     = useState<Transaction[]>([]);
-  const [importIncome, setImportIncome] = useState<any[]>([]);
+  const [importRows, setImportRows]       = useState<Transaction[]>([]);
+  const [importIncome, setImportIncome]   = useState<any[]>([]);
   const [importSection, setImportSection] = useState<"spending"|"income">("spending");
-  const [importStage, setImportStage]   = useState<"idle"|"preview"|"categorizing">("idle");
-  const [importBank, setImportBank]     = useState("");
-  const [saveMsg, setSaveMsg]           = useState<string|null>(null);
+  const [importStage, setImportStage]     = useState<"idle"|"preview"|"categorizing">("idle");
+  const [importBank, setImportBank]       = useState("");
+  const [saveMsg, setSaveMsg]             = useState<string|null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Add form state
   const [form, setForm] = useState({
     description: "", amount: "", category: "", transaction_date: "", account_id: DEFAULT_ACCOUNT_ID,
   });
 
-  useEffect(() => { fetchTransactions(); fetchCategories(); fetchAccounts(); }, [month]);
+  useEffect(() => { fetchTransactions(); fetchCategories(); fetchAccounts(); fetchOwners(); }, [month]);
 
   async function fetchTransactions() {
     setLoading(true);
@@ -69,6 +87,26 @@ export default function SpendingTab({ month }: Props) {
         ))
       : [];
     setAccounts(filtered);
+  }
+
+  async function fetchTrends() {
+    setTrendsLoading(true);
+    try {
+      const year = month.split("-")[0];
+      const data = await (await apiFetch(`/api/v1/cashflow/trends?year=${year}`)).json();
+      setTrendsData(Array.isArray(data) ? data : []);
+    } finally { setTrendsLoading(false); }
+  }
+
+  function togglePanel(panel: "breakdown"|"trends") {
+    if (activePanel === panel) { setActivePanel(null); return; }
+    setActivePanel(panel);
+    if (panel === "trends" && trendsData.length === 0) fetchTrends();
+  }
+
+  async function fetchOwners() {
+    const data = await (await apiFetch("/api/v1/owners/")).json();
+    setOwners(Array.isArray(data) ? data : []);
   }
 
   async function handleAddManual() {
@@ -104,7 +142,6 @@ export default function SpendingTab({ month }: Props) {
     setTransactions(prev => prev.map(t => t.id === id ? { ...t, category } : t));
   }
 
-  // --- CSV Import ---
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -118,11 +155,7 @@ export default function SpendingTab({ month }: Props) {
       body: formData,
     });
     const data = await res.json();
-    if (!res.ok || data.error) {
-      alert(data.error || data.detail || "Import failed");
-      return;
-    }
-    // Stack rows — append to existing preview
+    if (!res.ok || data.error) { alert(data.error || data.detail || "Import failed"); return; }
     setImportBank(data.bank || "unknown");
     setImportRows(prev => [...prev, ...(Array.isArray(data.transactions) ? data.transactions : [])]);
     setImportIncome(prev => [...prev, ...(Array.isArray(data.income) ? data.income : [])]);
@@ -168,20 +201,58 @@ export default function SpendingTab({ month }: Props) {
     setImportRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
   }
 
-  function removeImportRow(idx: number) {
-    setImportRows(prev => prev.filter((_, i) => i !== idx));
-  }
+  // --- Breakdown data (client-side) ---
+  const categoryTotals = transactions.reduce((acc, t) => {
+    const cat = t.category || "Uncategorized";
+    acc[cat] = (acc[cat] || 0) + t.amount;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const pieData = Object.entries(categoryTotals)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(2)) }));
+
+  // --- Trends data (cross-month, from API) ---
+  const allMonths = Array.from(new Set(trendsData.map((r: any) => r.month))).sort();
+  const allAccountIds = Array.from(new Set(trendsData.map((r: any) => r.account_id)));
+  const accountNames: Record<string, string> = {};
+  trendsData.forEach((r: any) => { accountNames[r.account_id] = r.account_name || r.account_id; });
+
+  const trendsChartData = allMonths.map(m => {
+    const entry: any = { month: shortMonth(m) };
+    allAccountIds.forEach(aid => {
+      const row = trendsData.find((r: any) => r.month === m && r.account_id === aid);
+      entry[aid] = row ? parseFloat(row.total.toFixed(2)) : 0;
+    });
+    return entry;
+  });
+
+  const filteredTransactions = activeFilter
+    ? transactions.filter(t => (t.category || "Uncategorized") === activeFilter)
+    : transactions;
 
   const total = transactions.reduce((s, t) => s + t.amount, 0);
+  const filteredTotal = filteredTransactions.reduce((s, t) => s + t.amount, 0);
 
   return (
     <div className="space-y-4">
 
       {/* Summary bar */}
       <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
-        <span className="text-sm text-gray-500">{transactions.length} transactions</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-500">{transactions.length} transactions</span>
+          {activeFilter && (
+            <span className="flex items-center gap-1 text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">
+              {activeFilter}
+              <button onClick={() => setActiveFilter(null)}><X className="w-3 h-3" /></button>
+            </span>
+          )}
+        </div>
         <span className="text-lg font-semibold text-gray-900">
-          ${total.toLocaleString("en-US", { minimumFractionDigits: 2 })} spent
+          {activeFilter
+            ? <>${filteredTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })} <span className="text-sm text-gray-400">of ${total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span></>
+            : `$${total.toLocaleString("en-US", { minimumFractionDigits: 2 })} spent`
+          }
         </span>
       </div>
 
@@ -192,33 +263,41 @@ export default function SpendingTab({ month }: Props) {
         </div>
       )}
 
-      {/* Actions — always visible */}
-      <div className="flex gap-2 flex-wrap">
-        <select
-          value={selectedAccountId}
-          onChange={e => setSelectedAccountId(e.target.value)}
-          className="border border-gray-300 rounded-md px-3 py-1.5 text-sm text-gray-700 bg-white"
-        >
+      {/* Actions */}
+      <div className="flex gap-2 flex-wrap items-center">
+        <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)}
+          className="border border-gray-300 rounded-md px-3 py-1.5 text-sm text-gray-700 bg-white">
           <option value="">— Select account —</option>
-          {accounts.map(a => (
-            <option key={a.id} value={a.id}>{a.name}</option>
-          ))}
+          {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
-        <button
-          onClick={() => selectedAccountId && fileRef.current?.click()}
+        <button onClick={() => selectedAccountId && fileRef.current?.click()}
           disabled={!selectedAccountId}
-          className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
+          className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border border-gray-300 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
           <Upload className="w-4 h-4" />
           {importRows.length > 0 ? "Add Another CSV" : "Import CSV"}
         </button>
-        <button
-          onClick={() => setShowAddForm(v => !v)}
-          className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border border-gray-300 hover:bg-gray-50 transition-colors"
-        >
+        <button onClick={() => setShowAddForm(v => !v)}
+          className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border border-gray-300 hover:bg-gray-50">
           <Plus className="w-4 h-4" /> Add Manual
         </button>
         <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
+
+        {/* Panel toggles — only show when there are transactions */}
+        {transactions.length > 0 && (
+          <div className="ml-auto flex gap-1">
+            {(["breakdown", "trends"] as const).map(panel => (
+              <button key={panel} onClick={() => togglePanel(panel)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                  activePanel === panel
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "border-gray-300 text-gray-600 hover:bg-gray-50"
+                }`}>
+                {panel === "breakdown" ? <BarChart2 className="w-3.5 h-3.5" /> : <TrendingUp className="w-3.5 h-3.5" />}
+                {panel === "breakdown" ? "Breakdown" : "Trends"}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Add manual form */}
@@ -235,8 +314,7 @@ export default function SpendingTab({ month }: Props) {
             <input placeholder="Description" value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               className="border border-gray-300 rounded-md px-3 py-1.5 text-sm col-span-2" />
-            <select value={form.category}
-              onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+            <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
               className="border border-gray-300 rounded-md px-3 py-1.5 text-sm col-span-2">
               <option value="">— Category —</option>
               {categories.map(c => <option key={c} value={c}>{c}</option>)}
@@ -254,8 +332,6 @@ export default function SpendingTab({ month }: Props) {
       {/* CSV Import Preview */}
       {importStage !== "idle" && importRows.length > 0 && (
         <div className="border border-indigo-200 rounded-lg bg-indigo-50 p-4 space-y-3">
-
-          {/* Preview header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <p className="text-sm font-medium text-indigo-800 capitalize">
@@ -278,7 +354,6 @@ export default function SpendingTab({ month }: Props) {
               className="text-indigo-400 hover:text-indigo-700"><X className="w-4 h-4" /></button>
           </div>
 
-          {/* Action buttons */}
           <div className="flex gap-2">
             {importStage === "preview" && (
               <button onClick={handleCategorize}
@@ -291,14 +366,13 @@ export default function SpendingTab({ month }: Props) {
                 <Loader2 className="w-4 h-4 animate-spin" /> Categorizing {importRows.length} transactions…
               </div>
             )}
-            <button onClick={handleSave}
-              disabled={importStage === "categorizing"}
+            <button onClick={handleSave} disabled={importStage === "categorizing"}
               className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:opacity-50">
               <Check className="w-3.5 h-3.5" /> Save {importRows.length} transactions
             </button>
           </div>
 
-          {/* Spending table */}
+          {/* Spending preview table */}
           {importSection === "spending" && (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -319,8 +393,7 @@ export default function SpendingTab({ month }: Props) {
                       <td className="py-1 pr-3 text-gray-800 max-w-[200px] truncate">{t.description}</td>
                       <td className="py-1 pr-3 text-right font-medium">${Number(t.amount).toFixed(2)}</td>
                       <td className="py-1 pr-3">
-                        <select value={t.category || ""}
-                          onChange={e => updateImportRow(i, "category", e.target.value)}
+                        <select value={t.category || ""} onChange={e => updateImportRow(i, "category", e.target.value)}
                           className="border border-indigo-200 rounded px-1 py-0.5 text-xs bg-white">
                           <option value="">—</option>
                           {categories.map(c => <option key={c} value={c}>{c}</option>)}
@@ -331,9 +404,8 @@ export default function SpendingTab({ month }: Props) {
                           onChange={e => updateImportRow(i, "is_recurring", e.target.checked)} />
                       </td>
                       <td className="py-1">
-                        <button onClick={() => removeImportRow(i)} className="text-gray-400 hover:text-red-500">
-                          <X className="w-3 h-3" />
-                        </button>
+                        <button onClick={() => setImportRows(prev => prev.filter((_, j) => j !== i))}
+                          className="text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
                       </td>
                     </tr>
                   ))}
@@ -342,7 +414,7 @@ export default function SpendingTab({ month }: Props) {
             </div>
           )}
 
-          {/* Income table */}
+          {/* Income preview table */}
           {importSection === "income" && importIncome.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -390,6 +462,81 @@ export default function SpendingTab({ month }: Props) {
         </div>
       )}
 
+      {/* ── BREAKDOWN PANEL ── */}
+      {activePanel === "breakdown" && transactions.length > 0 && (
+        <div className="border border-gray-200 rounded-lg p-4 space-y-6 bg-white">
+          <p className="text-sm font-semibold text-gray-700">Spend by Category</p>
+
+          {/* Pie chart */}
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={pieData} cx="50%" cy="50%" outerRadius={90} dataKey="value"
+                  onClick={(d) => setActiveFilter(activeFilter === d.name ? null : d.name)}>
+                  {pieData.map((_, i) => (
+                    <Cell key={i} fill={COLORS[i % COLORS.length]}
+                      opacity={activeFilter && activeFilter !== pieData[i].name ? 0.3 : 1}
+                      style={{ cursor: "pointer" }} />
+                  ))}
+                </Pie>
+                <ReTooltip formatter={(v: any) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2 })}`} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Horizontal bar chart */}
+          <div style={{ height: `${Math.max(pieData.length * 32, 120)}px` }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={pieData} layout="vertical" barSize={18}
+                margin={{ left: 80, right: 40, top: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} axisLine={false} tickLine={false}
+                  tickFormatter={(v: number) => `$${(v/1000).toFixed(0)}k`} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
+                <ReTooltip formatter={(v: any) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2 })}`} />
+                <Bar dataKey="value" radius={[0, 4, 4, 0]} onClick={(d) => setActiveFilter(activeFilter === d.name ? null : d.name)}
+                  style={{ cursor: "pointer" }}>
+                  {pieData.map((entry, i) => (
+                    <Cell key={i} fill={COLORS[i % COLORS.length]}
+                      opacity={activeFilter && activeFilter !== entry.name ? 0.3 : 1} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* ── TRENDS PANEL ── */}
+      {activePanel === "trends" && (
+        <div className="border border-gray-200 rounded-lg p-4 bg-white space-y-3">
+          <p className="text-sm font-semibold text-gray-700">Monthly Spend by Account — {month.split("-")[0]}</p>
+          {trendsLoading ? (
+            <div className="flex items-center justify-center py-12 text-gray-400">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
+            </div>
+          ) : trendsChartData.length === 0 ? (
+            <div className="text-center py-12 text-gray-400 text-sm">No data for this year yet.</div>
+          ) : (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={trendsChartData} barSize={10}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false}
+                    tickFormatter={(v: number) => `$${(v/1000).toFixed(0)}k`} />
+                  <ReTooltip formatter={(v: any, name: any) => [`$${Number(v).toLocaleString()}`, accountNames[name] || name]} />
+                  <Legend formatter={(value) => accountNames[value] || value} wrapperStyle={{ fontSize: 11 }} />
+                  {allAccountIds.map((aid, i) => (
+                    <Bar key={aid as string} dataKey={aid as string} fill={COLORS[i % COLORS.length]} radius={[2,2,0,0]} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Transaction list */}
       {loading ? (
         <div className="flex items-center justify-center py-12 text-gray-400">
@@ -412,8 +559,9 @@ export default function SpendingTab({ month }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {transactions.map(t => (
-                <tr key={t.id} className="hover:bg-gray-50">
+              {filteredTransactions.map(t => (
+                <tr key={t.id}
+                  className={`hover:bg-gray-50 ${activeFilter && (t.category || "Uncategorized") === activeFilter ? "bg-indigo-50" : ""}`}>
                   <td className="px-4 py-2.5 text-gray-500 text-xs">{t.transaction_date}</td>
                   <td className="px-4 py-2.5 text-gray-800">
                     {t.description}

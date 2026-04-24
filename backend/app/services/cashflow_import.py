@@ -88,9 +88,10 @@ BOFA_SKIP_SIGNALS = [
 
 # Owner name fragments in BofA INDN: field
 # Format: "INDN:PAREKH" or "INDN:KANSARA" embedded in description
+# Maps to actual owner_id UUIDs from owners table
 BOFA_OWNER_HINTS = [
-    ("PAREKH",  "JP"),
-    ("KANSARA", "RK"),
+    ("PAREKH",  "501d5d96-33df-40b6-b11d-ce04ba7ba894"),
+    ("KANSARA", "90d343ea-7c82-496f-89f7-ebefad9a8324"),
 ]
 
 # Income type detection from description keywords

@@ -208,7 +208,7 @@ def confirm_import(body: dict, db: Session = Depends(get_db), _=Depends(require_
               (:id, :owner_id, :date, :source_name, :income_type, :amount, :notes, :created_at)
         """), {
             "id": iid,
-            "owner_id":    inc.get("owner_id") or inc.get("owner_hint") or "",
+            "owner_id":    inc.get("owner_id") or inc.get("owner_hint") or "unknown",
             "date":        inc.get("transaction_date", ""),
             "source_name": inc.get("description", ""),
             "income_type": inc.get("income_type", "other"),
@@ -357,6 +357,31 @@ def get_summary(year: str, db: Session = Depends(get_db), _=Depends(require_auth
         })
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# TRENDS
+# ---------------------------------------------------------------------------
+
+@router.get("/trends")
+def get_trends(year: str, db: Session = Depends(get_db), _=Depends(require_auth)):
+    """Returns monthly spending per account for a full year — powers Trends chart."""
+    months = [f"{year}-{str(m).zfill(2)}" for m in range(1, 13)]
+
+    rows = db.execute(text("""
+        SELECT
+            strftime('%Y-%m', t.transaction_date) as month,
+            t.account_id,
+            a.name as account_name,
+            COALESCE(SUM(t.amount), 0) as total
+        FROM transactions t
+        LEFT JOIN accounts a ON t.account_id = a.id
+        WHERE strftime('%Y', t.transaction_date) = :year
+        GROUP BY month, t.account_id
+        ORDER BY month, t.account_id
+    """), {"year": year}).fetchall()
+
+    return [dict(r._mapping) for r in rows]
 
 
 # ---------------------------------------------------------------------------
