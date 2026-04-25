@@ -345,6 +345,48 @@ Without this all /api/v1/* calls return 404 from Next.js.
 ### New DB Tables
 - user_settings: key-value store for app preferences (projection scenarios, future settings)
 
+## Mortgage Tracker — /mortgage (v0.9.5)
+
+### Overview
+Pure audit trail — zero coupling to networth/cashflow/projections.
+Tracks full history: original purchase + each refinance + monthly payments.
+
+### Data Model (new tables — isolated island)
+- mortgages: property record (name, address, purchase price/date)
+- mortgage_loans: one row per loan event (purchase/refinance/payoff)
+  - Fields: loan_type (fixed/arm), original_balance, rate, term_months,
+    start_date, end_date, monthly_escrow, monthly_extra_principal,
+    closing_costs, down_payment, ARM fields (initial_period, cap, lifetime_cap)
+  - Editable: rate, escrow, extra_principal, notes
+  - On refinance: previous active loan auto-closed
+- mortgage_payments: actual payment log (principal, interest, escrow, extra_principal, balance_after)
+
+### Pages
+- /mortgage — property list, add property
+- /mortgage/[id] — 5 tabs:
+  - Overview: active loan summary cards
+  - Loans: full history timeline, add loan/refi, inline edit, delete
+  - Amortization: full schedule (scrollable), extra payments highlighted green
+  - Payoff Calculator: enter extra monthly payment → months saved + interest saved
+  - Payments: log actual payments with principal/interest/escrow/extra split
+
+### Backend (app/api/v1/mortgage.py — 9 routes)
+- GET/POST /api/v1/mortgage/ — list/create properties
+- GET/DELETE /api/v1/mortgage/{id} — get with loans / delete cascade
+- POST /api/v1/mortgage/loan/add — add loan or refi
+- PUT/DELETE /api/v1/mortgage/loan/{id} — edit (rate/escrow/extra/notes) / delete
+- GET /api/v1/mortgage/loan/{id}/amortization — full schedule + payoff stats
+- GET /api/v1/mortgage/loan/{id}/payments — payment history
+- POST /api/v1/mortgage/payment/add — log payment
+- DELETE /api/v1/mortgage/payment/{id} — delete payment
+
+### Amortization math
+- Standard amortization formula with optional extra payments
+- One-time extras pulled from mortgage_payments table
+- Recurring extra from monthly_extra_principal field
+- Base vs with-extras comparison for payoff calculator
+- ARM support: fixed initial period, then rate steps by arm_cap (capped at lifetime_cap)
+
 ### Known issues / TODO
 - npm run build has a Recharts tickFormatter type warning (non-blocking, works in dev)
 - spend_categories table is empty — using hardcoded default categories
@@ -422,7 +464,7 @@ Before writing any code, always confirm branch and create a feature branch:
   git checkout -b feature/<name>   # e.g. feature/insurance, feature/spending
   git log --oneline -3
 
-Current stable base: main (v0.9.3-forecast-projection)
+Current stable base: main (v0.9.5-mortgage)
 Holdings + Claude Sensor + Cash Flow (spending, income, savings rate, monthly review,
 import history, category breakdown, trends) are complete and merged to main.
 All new features should branch from main.
