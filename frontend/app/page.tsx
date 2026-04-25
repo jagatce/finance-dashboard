@@ -2,7 +2,6 @@
 import { apiFetch } from "@/lib/auth";
 import { useEffect, useState } from "react";
 import { TrendingUp, TrendingDown, Wallet, CreditCard, PiggyBank, RefreshCw } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -34,7 +33,6 @@ const categoryLabels: Record<string, string> = {
 
 export default function Dashboard() {
   const [summary, setSummary]       = useState<any>(null);
-  const [projection, setProjection] = useState<any>(null);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState("");
 
@@ -44,10 +42,7 @@ export default function Dashboard() {
       const res = await apiFetch(`${API}/networth/summary`);
       const data = await res.json();
       setSummary(data);
-      try {
-        const proj = await (await apiFetch("/api/v1/cashflow/projection")).json();
-        setProjection(proj);
-      } catch { /* non-critical */ }
+
     } catch (e) {
       setError("Cannot connect to backend. Make sure it's running on port 8000.");
     }
@@ -171,82 +166,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Net Worth Projection Widget */}
-      {projection && projection.current_nw > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold text-gray-900 text-sm">Net Worth Projection</h2>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Based on avg monthly savings of {fmt(projection.avg_monthly_savings)}
-              </p>
-            </div>
-            {projection.milestones?.length > 0 && (
-              <div className="text-right">
-                <p className="text-xs text-gray-400">Next milestone</p>
-                <p className="text-sm font-semibold text-indigo-600">
-                  {fmt(projection.milestones[0].target)} in {Math.ceil(projection.milestones[0].months_away)} months
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={[
-                  ...projection.history.map((h: any) => ({
-                    label: h.date?.slice(0, 7),
-                    net_worth: h.net_worth,
-                    type: "actual",
-                  })),
-                  ...projection.projections.map((p: any) => ({
-                    label: p.month,
-                    projected: p.net_worth,
-                    type: "projected",
-                  })),
-                ]}
-              >
-                <defs>
-                  <linearGradient id="nwGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#4f46e5" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}    />
-                  </linearGradient>
-                  <linearGradient id="projGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#a5b4fc" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#a5b4fc" stopOpacity={0}    />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false}
-                  tickFormatter={(v: number) => `$${(v/1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                <ReferenceLine y={projection.current_nw} stroke="#e5e7eb" strokeDasharray="4 4" />
-                <Area type="monotone" dataKey="net_worth" stroke="#4f46e5" fill="url(#nwGrad)"
-                  strokeWidth={2} connectNulls />
-                <Area type="monotone" dataKey="projected" stroke="#a5b4fc" fill="url(#projGrad)"
-                  strokeWidth={2} strokeDasharray="4 4" connectNulls />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Milestone targets */}
-          {projection.milestones?.length > 0 && (
-            <div className="flex gap-3">
-              {projection.milestones.map((m: any, i: number) => (
-                <div key={i} className="flex-1 bg-indigo-50 rounded-lg px-3 py-2">
-                  <p className="text-xs text-indigo-400">Reach {fmt(m.target)}</p>
-                  <p className="text-sm font-semibold text-indigo-700">{m.reach_date}</p>
-                  <p className="text-xs text-indigo-400">{Math.ceil(m.months_away)} months away</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Empty state CTA */}
+            {/* Empty state CTA */}
       {assetCategories.length === 0 && liabilityCategories.length === 0 && (
         <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 text-center">
           <PiggyBank className="w-10 h-10 text-indigo-400 mx-auto mb-3" />

@@ -523,6 +523,93 @@ def get_projection(db: Session = Depends(get_db), _=Depends(require_auth)):
 
 
 # ---------------------------------------------------------------------------
+# USER SETTINGS
+# ---------------------------------------------------------------------------
+
+@router.get("/settings/{key}")
+def get_setting(key: str, db: Session = Depends(get_db), _=Depends(require_auth)):
+    row = db.execute(text("SELECT value FROM user_settings WHERE key = :key"), {"key": key}).fetchone()
+    if not row:
+        raise HTTPException(404, f"Setting {key} not found")
+    import json
+    return {"key": key, "value": json.loads(row.value)}
+
+
+@router.put("/settings/{key}")
+def save_setting(key: str, body: dict, db: Session = Depends(get_db), _=Depends(require_auth)):
+    import json
+    value = json.dumps(body.get("value"))
+    db.execute(text("""
+        INSERT INTO user_settings (key, value, updated_at)
+        VALUES (:key, :value, :updated_at)
+        ON CONFLICT(key) DO UPDATE SET value = :value, updated_at = :updated_at
+    """), {"key": key, "value": value, "updated_at": datetime.utcnow().isoformat()})
+    db.commit()
+    return {"key": key, "status": "saved"}
+
+
+# ---------------------------------------------------------------------------
+# PROJECTIONS (scenario planning)
+# ---------------------------------------------------------------------------
+
+@router.get("/projections/inputs")
+def get_projection_inputs(db: Session = Depends(get_db), _=Depends(require_auth)):
+    """Returns current balances by asset bucket + avg savings + avg spending."""
+
+    # Balances by category — latest snapshot per account
+    bal_sql = """
+        SELECT a.category, SUM(b.balance) as total
+        FROM balance_snapshots b
+        JOIN accounts a ON b.account_id = a.id
+        WHERE b.snapshot_date = (
+            SELECT MAX(b2.snapshot_date) FROM balance_snapshots b2
+            WHERE b2.account_id = b.account_id
+        )
+        AND a.is_active = 1
+        GROUP BY a.category
+    """
+    bal_rows = db.execute(text(bal_sql)).fetchall()
+    balances = {r.category: round(float(r.total), 2) for r in bal_rows}
+
+    cash        = balances.get("cash", 0)
+    investments = round(balances.get("taxable", 0) + balances.get("hsa", 0) + balances.get("alternative", 0), 2)
+    retirement  = balances.get("retirement", 0)
+    liabilities = round(balances.get("credit_card", 0) + balances.get("loan", 0), 2)
+    current_nw  = round(cash + investments + retirement - liabilities, 2)
+
+    # Avg monthly income
+    income_rows = db.execute(text("""
+        SELECT SUM(amount) as total, COUNT(DISTINCT strftime('%Y-%m', date)) as months
+        FROM income_transactions
+    """)).fetchone()
+    avg_income = round(float(income_rows.total or 0) / max(int(income_rows.months or 1), 1), 2)
+
+    # Avg monthly spending
+    spend_rows = db.execute(text("""
+        SELECT SUM(amount) as total, COUNT(DISTINCT strftime('%Y-%m', transaction_date)) as months
+        FROM transactions
+    """)).fetchone()
+    avg_spending = round(float(spend_rows.total or 0) / max(int(spend_rows.months or 1), 1), 2)
+
+    avg_savings  = round(avg_income - avg_spending, 2)
+    annual_spend = round(avg_spending * 12, 2)
+    fire_number  = round(annual_spend * 25, 2)
+
+    return {
+        "current_nw":    current_nw,
+        "cash":          cash,
+        "investments":   investments,
+        "retirement":    retirement,
+        "liabilities":   liabilities,
+        "avg_income":    avg_income,
+        "avg_spending":  avg_spending,
+        "avg_savings":   avg_savings,
+        "annual_spend":  annual_spend,
+        "fire_number":   fire_number,
+    }
+
+
+# ---------------------------------------------------------------------------
 # FORECAST
 # ---------------------------------------------------------------------------
 

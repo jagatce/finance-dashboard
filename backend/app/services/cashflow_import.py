@@ -82,8 +82,10 @@ BOFA_INCOME_SIGNALS = [
 
 # BofA skip signals — internal transfers, credit card payments
 BOFA_SKIP_SIGNALS = [
-    "AMERICAN EXPRESS", "CHASE CREDIT CRD", "UNFCU DES:CK-WTH",
-    "Beginning balance",
+    "AMERICAN EXPRESS",   # Amex credit card payment — skip to avoid double-counting
+    "CHASE CREDIT CRD",   # Chase credit card payment — skip to avoid double-counting
+    "Beginning balance",  # BofA summary row
+    # NOTE: UNFCU removed — that is the mortgage payment, a real expense
 ]
 
 # Owner name fragments in BofA INDN: field
