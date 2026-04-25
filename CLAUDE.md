@@ -325,6 +325,26 @@ Without this all /api/v1/* calls return 404 from Next.js.
 - #7 Cash flow forecast ✅
 - #8 Alerts & anomaly detection (pending)
 
+### Projections Page — /projections
+- 3 scenarios: Conservative, Base, Optimistic
+- Each scenario: configurable cash/investment/retirement return rates
+- 10-year net worth projection chart (3 lines)
+- Asset breakdown at year 10 per scenario (cash, investments, retirement)
+- FIRE number: 25x annual spending (overridable)
+- Milestone dates per scenario ($500k, $750k, $1M, $1.5M, $2M)
+- Return rate assumptions saved to DB via user_settings table
+- GET/PUT /api/v1/cashflow/settings/{key} — generic key-value settings API
+- GET /api/v1/cashflow/projections/inputs — current balances by bucket + avg savings
+
+### Bug Fix — BofA Mortgage Payment
+- UNFCU DES:CK-WTH was incorrectly in BOFA_SKIP_SIGNALS
+- Mortgage payment (~$8,854/month) was being silently dropped on import
+- Fixed: only AMERICAN EXPRESS and CHASE CREDIT CRD payments are skipped
+- Reimported all 3 BofA statements to capture correct data
+
+### New DB Tables
+- user_settings: key-value store for app preferences (projection scenarios, future settings)
+
 ### Known issues / TODO
 - npm run build has a Recharts tickFormatter type warning (non-blocking, works in dev)
 - spend_categories table is empty — using hardcoded default categories
@@ -402,7 +422,7 @@ Before writing any code, always confirm branch and create a feature branch:
   git checkout -b feature/<name>   # e.g. feature/insurance, feature/spending
   git log --oneline -3
 
-Current stable base: feature/recurring-forecast (to be merged)
+Current stable base: main (v0.9.3-forecast-projection)
 Holdings + Claude Sensor + Cash Flow (spending, income, savings rate, monthly review,
 import history, category breakdown, trends) are complete and merged to main.
 All new features should branch from main.
