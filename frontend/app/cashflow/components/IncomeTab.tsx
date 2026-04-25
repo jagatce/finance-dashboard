@@ -61,6 +61,15 @@ export default function IncomeTab({ month }: Props) {
     fetchIncome();
   }
 
+  async function handleUpdate(id: string, field: string, value: string) {
+    await apiFetch(`/api/v1/cashflow/income/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    });
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
+  }
+
   async function handleDelete(id: string) {
     await apiFetch(`/api/v1/cashflow/income/${id}`, { method: "DELETE" });
     fetchIncome();
@@ -179,12 +188,21 @@ export default function IncomeTab({ month }: Props) {
                   <td className="px-4 py-2.5 text-gray-500 text-xs">{e.date}</td>
                   <td className="px-4 py-2.5 text-gray-800">{e.source_name}</td>
                   <td className="px-4 py-2.5">
-                    <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded capitalize">
-                      {e.income_type}
-                    </span>
+                    <select value={e.income_type || "other"}
+                      onChange={ev => handleUpdate(e.id, "income_type", ev.target.value)}
+                      className="text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600">
+                      {["salary","bonus","freelance","dividend","rental","other"].map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
                   </td>
-                  <td className="px-4 py-2.5 text-gray-500 text-xs">
-                    {owners.find(o => o.id === e.owner_id)?.name ?? e.owner_id}
+                  <td className="px-4 py-2.5">
+                    <select value={e.owner_id}
+                      onChange={ev => handleUpdate(e.id, "owner_id", ev.target.value)}
+                      className={`text-xs border rounded px-1.5 py-0.5 bg-white ${e.owner_id === "unknown" || !e.owner_id ? "border-amber-300 text-amber-700" : "border-gray-200 text-gray-600"}`}>
+                      <option value="unknown">— assign —</option>
+                      {owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    </select>
                   </td>
                   <td className="px-4 py-2.5 text-right font-medium text-green-700">
                     ${e.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}

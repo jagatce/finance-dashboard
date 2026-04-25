@@ -406,6 +406,194 @@ def get_summary(year: str, db: Session = Depends(get_db), _=Depends(require_auth
 
 
 # ---------------------------------------------------------------------------
+# FORECAST
+# ---------------------------------------------------------------------------
+
+@router.get("/forecast")
+def get_forecast(db: Session = Depends(get_db), _=Depends(require_auth)):
+    """Returns 12-month cash flow forecast based on historical averages."""
+    from calendar import monthrange
+    import datetime as dt
+
+    # --- Historical averages ---
+    income_rows = db.execute(text("""
+        SELECT strftime('%Y-%m', date) as month, SUM(amount) as total
+        FROM income_transactions GROUP BY month ORDER BY month
+    """)).fetchall()
+
+    spending_rows = db.execute(text("""
+        SELECT strftime('%Y-%m', transaction_date) as month, SUM(amount) as total
+        FROM transactions GROUP BY month ORDER BY month
+    """)).fetchall()
+
+    income_by_month  = {r.month: float(r.total) for r in income_rows}
+    spending_by_month = {r.month: float(r.total) for r in spending_rows}
+
+    # Months that have BOTH income and spending data = complete months
+    complete_months = sorted(set(income_by_month.keys()) & set(spending_by_month.keys()))
+    all_income_months  = sorted(income_by_month.keys())
+    all_spending_months = sorted(spending_by_month.keys())
+
+    avg_income   = round(sum(income_by_month.values()) / len(income_by_month), 2) if income_by_month else 0
+    avg_spending = round(sum(spending_by_month.values()) / len(spending_by_month), 2) if spending_by_month else 0
+    avg_savings  = round(avg_income - avg_spending, 2)
+    savings_rate = round((avg_savings / avg_income * 100), 1) if avg_income > 0 else 0
+
+    # Monthly recurring total
+    recurring_row = db.execute(text("""
+        SELECT ROUND(SUM(DISTINCT amount), 2) as total
+        FROM transactions WHERE is_recurring = 1
+    """)).fetchone()
+    monthly_recurring = float(recurring_row.total or 0)
+
+    # Current liquid balance (cash accounts)
+    balance_rows = db.execute(text("""
+        SELECT a.id, a.name, b.balance
+        FROM balance_snapshots b
+        JOIN accounts a ON b.account_id = a.id
+        WHERE a.category = 'cash'
+        AND b.snapshot_date = (
+            SELECT MAX(b2.snapshot_date) FROM balance_snapshots b2
+            WHERE b2.account_id = a.id
+        )
+        AND a.is_active = 1
+    """)).fetchall()
+
+    checking_accounts = [r for r in balance_rows if "checking" in r.name.lower()]
+    current_liquid = sum(float(r.balance) for r in checking_accounts)
+
+    # --- 12-month projection ---
+    today = dt.date.today()
+    projections = []
+    running_balance = current_liquid
+
+    for i in range(12):
+        # Get the month
+        month_date = dt.date(today.year, today.month, 1)
+        if today.month + i > 12:
+            year = today.year + (today.month + i - 1) // 12
+            month = (today.month + i - 1) % 12 + 1
+        else:
+            year = today.year
+            month = today.month + i
+        month_str = f"{year}-{str(month).zfill(2)}"
+
+        # Use actual data if available, else use average
+        actual_income   = income_by_month.get(month_str)
+        actual_spending = spending_by_month.get(month_str)
+        proj_income   = actual_income   if actual_income   is not None else avg_income
+        proj_spending = actual_spending if actual_spending is not None else avg_spending
+        proj_savings  = round(proj_income - proj_spending, 2)
+        running_balance = round(running_balance + proj_savings, 2)
+
+        projections.append({
+            "month":           month_str,
+            "income":          round(proj_income, 2),
+            "spending":        round(proj_spending, 2),
+            "savings":         proj_savings,
+            "savings_rate":    round((proj_savings / proj_income * 100), 1) if proj_income > 0 else 0,
+            "liquid_balance":  running_balance,
+            "is_actual":       actual_income is not None or actual_spending is not None,
+            "is_complete":     month_str in complete_months,
+        })
+
+    return {
+        "assumptions": {
+            "avg_income":        avg_income,
+            "avg_spending":      avg_spending,
+            "avg_savings":       avg_savings,
+            "savings_rate":      savings_rate,
+            "monthly_recurring": monthly_recurring,
+            "current_liquid":    round(current_liquid, 2),
+            "income_months":     len(all_income_months),
+            "spending_months":   len(all_spending_months),
+            "complete_months":   complete_months,
+        },
+        "projections": projections,
+    }
+
+
+# ---------------------------------------------------------------------------
+# RECURRING
+# ---------------------------------------------------------------------------
+
+@router.get("/recurring")
+def get_recurring(db: Session = Depends(get_db), _=Depends(require_auth)):
+    """Returns confirmed recurring transactions and auto-detected candidates."""
+
+    # Confirmed recurring — flagged is_recurring=1, grouped by description+amount
+    confirmed_sql = """
+        SELECT
+            t.description,
+            t.amount,
+            t.category,
+            t.source,
+            COUNT(*) as occurrences,
+            MIN(t.transaction_date) as first_seen,
+            MAX(t.transaction_date) as last_seen,
+            ROUND(SUM(t.amount), 2) as ytd_total,
+            GROUP_CONCAT(DISTINCT strftime('%Y-%m', t.transaction_date)) as months
+        FROM transactions t
+        WHERE t.is_recurring = 1
+        GROUP BY t.description, t.amount
+        ORDER BY t.amount DESC
+    """
+    confirmed_rows = db.execute(text(confirmed_sql)).fetchall()
+
+    # Auto-detect candidates — not flagged, but appear in 2+ different months
+    candidates_sql = """
+        SELECT
+            t.description,
+            ROUND(t.amount, 2) as amount,
+            t.category,
+            COUNT(*) as occurrences,
+            COUNT(DISTINCT strftime('%Y-%m', t.transaction_date)) as distinct_months,
+            MIN(t.transaction_date) as first_seen,
+            MAX(t.transaction_date) as last_seen,
+            GROUP_CONCAT(DISTINCT strftime('%Y-%m', t.transaction_date)) as months
+        FROM transactions t
+        WHERE (t.is_recurring = 0 OR t.is_recurring IS NULL)
+        GROUP BY t.description, ROUND(t.amount, 2)
+        HAVING distinct_months >= 2
+        ORDER BY distinct_months DESC, amount DESC
+    """
+    candidate_rows = db.execute(text(candidates_sql)).fetchall()
+
+    return {
+        "confirmed": [dict(r._mapping) for r in confirmed_rows],
+        "candidates": [dict(r._mapping) for r in candidate_rows],
+    }
+
+
+@router.post("/recurring/mark")
+def mark_recurring(body: dict, db: Session = Depends(get_db), _=Depends(require_auth)):
+    """Mark all transactions matching description+amount as recurring."""
+    description = body.get("description")
+    amount      = body.get("amount")
+    is_recurring = body.get("is_recurring", True)
+
+    if not description:
+        raise HTTPException(400, "description required")
+
+    params: dict = {"description": description, "is_recurring": is_recurring}
+    if amount is not None:
+        result = db.execute(text("""
+            UPDATE transactions
+            SET is_recurring = :is_recurring
+            WHERE description = :description AND ROUND(amount, 2) = ROUND(:amount, 2)
+        """), {**params, "amount": amount})
+    else:
+        result = db.execute(text("""
+            UPDATE transactions
+            SET is_recurring = :is_recurring
+            WHERE description = :description
+        """), params)
+
+    db.commit()
+    return {"updated": result.rowcount}
+
+
+# ---------------------------------------------------------------------------
 # IMPORT HISTORY
 # ---------------------------------------------------------------------------
 

@@ -5,8 +5,9 @@ import SpendingTab    from "./components/SpendingTab";
 import IncomeTab      from "./components/IncomeTab";
 import SavingsRateTab from "./components/SavingsRateTab";
 import MonthlyReviewTab from "./components/MonthlyReviewTab";
+import RecurringTab     from "./components/RecurringTab";
 
-const TABS = ["Spending", "Income", "Savings Rate", "Monthly Review"] as const;
+const TABS = ["Spending", "Income", "Savings Rate", "Recurring", "Monthly Review"] as const;
 type Tab = typeof TABS[number];
 
 function getCurrentMonth() {
@@ -93,6 +94,7 @@ export default function CashFlowPage() {
         {activeTab === "Spending"       && <SpendingTab    month={selectedMonth} />}
         {activeTab === "Income"         && <IncomeTab      month={selectedMonth} />}
         {activeTab === "Savings Rate"   && <SavingsRateTab month={selectedMonth} />}
+        {activeTab === "Recurring"     && <RecurringTab />}
         {activeTab === "Monthly Review" && <MonthlyReviewTab month={selectedMonth} />}
 
       </div>
