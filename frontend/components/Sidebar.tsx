@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Wallet, CreditCard, Shield,
   TrendingUp, PiggyBank, BarChart3, Settings,
-  DollarSign, Database, LogOut, BarChart2, Sparkles, Radio
+  DollarSign, Database, LogOut, BarChart2, Sparkles, Radio, Home
 } from "lucide-react";
 import { clearToken } from "@/lib/auth";
 
@@ -33,6 +33,7 @@ const nav = [
     items: [
       { href: "/accounts/category/credit_card", label: "Credit Cards", icon: CreditCard },
       { href: "/accounts/category/loan",        label: "Loans",        icon: Wallet },
+      { href: "/mortgage",                       label: "Mortgage",     icon: Home },
     ],
   },
   {
