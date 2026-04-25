@@ -406,6 +406,123 @@ def get_summary(year: str, db: Session = Depends(get_db), _=Depends(require_auth
 
 
 # ---------------------------------------------------------------------------
+# NET WORTH PROJECTION
+# ---------------------------------------------------------------------------
+
+@router.get("/projection")
+def get_projection(db: Session = Depends(get_db), _=Depends(require_auth)):
+    """Returns net worth projection for next 12 months."""
+    import datetime as dt
+
+    # Current net worth — computed from latest balance_snapshots per account
+    nw_sql = """
+        SELECT
+            b.snapshot_date,
+            SUM(CASE WHEN a.category IN ('cash','taxable','retirement','hsa','alternative','manual')
+                     THEN b.balance ELSE 0 END) as assets,
+            SUM(CASE WHEN a.category IN ('credit_card','loan')
+                     THEN b.balance ELSE 0 END) as liabilities
+        FROM balance_snapshots b
+        JOIN accounts a ON b.account_id = a.id
+        WHERE b.snapshot_date = (
+            SELECT MAX(b2.snapshot_date) FROM balance_snapshots b2
+            WHERE b2.account_id = b.account_id
+        )
+    """
+    nw_row = db.execute(text(nw_sql)).fetchone()
+    current_nw = round(float(nw_row.assets or 0) - float(nw_row.liabilities or 0), 2) if nw_row else 0
+    nw_date    = nw_row.snapshot_date if nw_row else str(dt.date.today())
+
+    # Historical net worth — one data point per month from balance_snapshots
+    history_sql = """
+        SELECT
+            strftime('%Y-%m', b.snapshot_date) as month,
+            MAX(b.snapshot_date) as snapshot_date,
+            SUM(CASE WHEN a.category IN ('cash','taxable','retirement','hsa','alternative','manual')
+                     THEN b.balance ELSE 0 END) as assets,
+            SUM(CASE WHEN a.category IN ('credit_card','loan')
+                     THEN b.balance ELSE 0 END) as liabilities
+        FROM balance_snapshots b
+        JOIN accounts a ON b.account_id = a.id
+        WHERE b.snapshot_date = (
+            SELECT MAX(b2.snapshot_date) FROM balance_snapshots b2
+            WHERE b2.account_id = b.account_id
+            AND strftime('%Y-%m', b2.snapshot_date) = strftime('%Y-%m', b.snapshot_date)
+        )
+        GROUP BY month
+        ORDER BY month DESC LIMIT 6
+    """
+    history_rows = db.execute(text(history_sql)).fetchall()
+    history = [
+        {"date": r.snapshot_date, "net_worth": round(float(r.assets or 0) - float(r.liabilities or 0), 2)}
+        for r in reversed(history_rows)
+    ]
+
+    # Avg monthly savings
+    income_rows = db.execute(text("""
+        SELECT strftime('%Y-%m', date) as month, SUM(amount) as total
+        FROM income_transactions GROUP BY month
+    """)).fetchall()
+    spending_rows = db.execute(text("""
+        SELECT strftime('%Y-%m', transaction_date) as month, SUM(amount) as total
+        FROM transactions GROUP BY month
+    """)).fetchall()
+
+    income_by_month   = {r.month: float(r.total) for r in income_rows}
+    spending_by_month = {r.month: float(r.total) for r in spending_rows}
+    all_months = sorted(set(income_by_month.keys()) | set(spending_by_month.keys()))
+
+    monthly_savings = []
+    for m in all_months:
+        inc  = income_by_month.get(m, 0)
+        spend = spending_by_month.get(m, 0)
+        if inc > 0:
+            monthly_savings.append(inc - spend)
+
+    avg_monthly_savings = round(sum(monthly_savings) / len(monthly_savings), 2) if monthly_savings else 0
+
+    # 12-month projection
+    today = dt.date.today()
+    projections = []
+    running_nw = current_nw
+
+    for i in range(1, 13):
+        month_num = (today.month - 1 + i) % 12 + 1
+        year      = today.year + (today.month - 1 + i) // 12
+        month_str = f"{year}-{str(month_num).zfill(2)}"
+        running_nw = round(running_nw + avg_monthly_savings, 0)
+        projections.append({
+            "month":     month_str,
+            "net_worth": running_nw,
+        })
+
+    # Milestones
+    milestones = []
+    for target in [500000, 750000, 1000000, 1500000, 2000000, 3000000, 5000000]:
+        if current_nw < target:
+            months_needed = ((target - current_nw) / avg_monthly_savings) if avg_monthly_savings > 0 else None
+            if months_needed and months_needed <= 120:
+                reach_date = dt.date(today.year, today.month, 1)
+                reach_month = (today.month - 1 + int(months_needed)) % 12 + 1
+                reach_year  = today.year + (today.month - 1 + int(months_needed)) // 12
+                milestones.append({
+                    "target":       target,
+                    "months_away":  round(months_needed, 1),
+                    "reach_date":   f"{reach_year}-{str(reach_month).zfill(2)}",
+                })
+            break  # Only show next milestone
+
+    return {
+        "current_nw":          current_nw,
+        "nw_date":             nw_date,
+        "avg_monthly_savings": avg_monthly_savings,
+        "history":             history,
+        "projections":         projections,
+        "milestones":          milestones,
+    }
+
+
+# ---------------------------------------------------------------------------
 # FORECAST
 # ---------------------------------------------------------------------------
 

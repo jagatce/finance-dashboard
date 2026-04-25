@@ -293,6 +293,38 @@ Without this all /api/v1/* calls return 404 from Next.js.
 - DELETE /api/v1/cashflow/imports/{batch_id} — deletes batch + all transactions
 - GET /api/v1/cashflow/trends — monthly spend per account for full year
 
+## New Features (this session)
+
+### Recurring Transaction Manager — /cashflow Recurring tab
+- Auto-detects transactions appearing in 2+ months (candidates)
+- Confirmed recurring list with YTD total, months seen, one-click unmark
+- Summary cards: count, est. monthly cost, est. yearly cost
+- Mark/unmark via POST /api/v1/cashflow/recurring/mark
+- GET /api/v1/cashflow/recurring — returns confirmed + candidates
+
+### Cash Flow Forecast — /forecast page
+- 12-month projection based on avg income + avg spending from all imported months
+- Area chart: liquid balance over time (solid = actual, dashed = projected)
+- Override controls — user can manually adjust income/spending assumptions
+- Data quality warning when < 3 complete months available
+- Monthly table with actual vs projected vs partial status badges
+- GET /api/v1/cashflow/forecast — returns assumptions + 12 projections
+
+### Net Worth Projection Widget — Dashboard
+- Added to main dashboard below Assets/Liabilities cards
+- Area chart: historical NW (from balance_snapshots) + 12-month projected
+- Next milestone card (e.g. "Reach $1M in X months")
+- Avg monthly savings assumption shown
+- GET /api/v1/cashflow/projection — computes NW from balance_snapshots (no net_worth_snapshots needed)
+- Note: net_worth_snapshots table exists but is never written to — projection uses balance_snapshots directly
+
+### Product Backlog Added
+- #2 Recurring manager ✅
+- #3 Net worth projection widget ✅
+- #5 Tax efficiency score (pending)
+- #7 Cash flow forecast ✅
+- #8 Alerts & anomaly detection (pending)
+
 ### Known issues / TODO
 - npm run build has a Recharts tickFormatter type warning (non-blocking, works in dev)
 - spend_categories table is empty — using hardcoded default categories
@@ -370,7 +402,7 @@ Before writing any code, always confirm branch and create a feature branch:
   git checkout -b feature/<name>   # e.g. feature/insurance, feature/spending
   git log --oneline -3
 
-Current stable base: main (v0.9.2-spending-complete)
+Current stable base: feature/recurring-forecast (to be merged)
 Holdings + Claude Sensor + Cash Flow (spending, income, savings rate, monthly review,
 import history, category breakdown, trends) are complete and merged to main.
 All new features should branch from main.
