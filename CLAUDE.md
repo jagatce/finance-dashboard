@@ -198,7 +198,7 @@ Without this all /api/v1/* calls return 404 from Next.js.
 - main — stable (tagged, pushed to GitHub)
 - dev  — active development
 - feature/holdings — current branch
-- Latest tag: v0.6.3-pre-holdings (safe revert point)
+- Latest tag: v0.9.2-spending-complete (safe revert point)
 
 ## Key Decisions (do not revisit)
 - No Plaid, no cloud, no auth server
@@ -370,6 +370,7 @@ Before writing any code, always confirm branch and create a feature branch:
   git checkout -b feature/<name>   # e.g. feature/insurance, feature/spending
   git log --oneline -3
 
-Current stable base: main (v0.9.0-cashflow)
-Holdings + Claude Sensor + Cash Flow are complete and merged to main.
+Current stable base: main (v0.9.2-spending-complete)
+Holdings + Claude Sensor + Cash Flow (spending, income, savings rate, monthly review,
+import history, category breakdown, trends) are complete and merged to main.
 All new features should branch from main.
