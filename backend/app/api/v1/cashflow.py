@@ -575,7 +575,31 @@ def get_projection_inputs(db: Session = Depends(get_db), _=Depends(require_auth)
     investments = round(balances.get("taxable", 0) + balances.get("hsa", 0) + balances.get("alternative", 0), 2)
     retirement  = balances.get("retirement", 0)
     liabilities = round(balances.get("credit_card", 0) + balances.get("loan", 0), 2)
-    current_nw  = round(cash + investments + retirement - liabilities, 2)
+
+    # Add real estate equity from mortgage table
+    equity_sql = """
+        SELECT m.estimated_market_value, b.balance as mortgage_balance
+        FROM mortgages m
+        LEFT JOIN (
+            SELECT b2.balance, a.id as account_id
+            FROM balance_snapshots b2 JOIN accounts a ON b2.account_id = a.id
+            WHERE a.category = 'loan'
+            AND (LOWER(a.name) LIKE '%mortgage%' OR LOWER(a.name) LIKE '%unfcu%')
+            AND b2.snapshot_date = (
+                SELECT MAX(b3.snapshot_date) FROM balance_snapshots b3
+                WHERE b3.account_id = a.id
+            )
+            LIMIT 1
+        ) b ON 1=1
+        WHERE m.estimated_market_value IS NOT NULL
+    """
+    equity_rows = db.execute(text(equity_sql)).fetchall()
+    real_estate = sum(
+        max(0, float(r.estimated_market_value) - float(r.mortgage_balance or 0))
+        for r in equity_rows
+    )
+
+    current_nw  = round(cash + investments + retirement + real_estate - liabilities, 2)
 
     # Avg monthly income
     income_rows = db.execute(text("""
@@ -600,6 +624,7 @@ def get_projection_inputs(db: Session = Depends(get_db), _=Depends(require_auth)
         "cash":          cash,
         "investments":   investments,
         "retirement":    retirement,
+        "real_estate":   round(real_estate, 2),
         "liabilities":   liabilities,
         "avg_income":    avg_income,
         "avg_spending":  avg_spending,

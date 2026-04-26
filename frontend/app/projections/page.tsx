@@ -46,16 +46,17 @@ const DEFAULT_SCENARIOS: ScenarioConfig[] = [
 const MILESTONES = [500000, 750000, 1000000, 1500000, 2000000, 3000000];
 
 function projectScenario(
-  cash: number, investments: number, retirement: number,
+  cash: number, investments: number, retirement: number, realEstate: number,
   monthlySavings: number,
   cashReturn: number, invReturn: number, retReturn: number,
   years: number
 ) {
   const points = [];
-  let c = cash, inv = investments, ret = retirement;
+  let c = cash, inv = investments, ret = retirement, re = realEstate;
   const cashMonthly = Math.pow(1 + cashReturn/100, 1/12) - 1;
   const invMonthly  = Math.pow(1 + invReturn/100,  1/12) - 1;
   const retMonthly  = Math.pow(1 + retReturn/100,  1/12) - 1;
+  const reMonthly   = Math.pow(1 + 3/100, 1/12) - 1; // Real estate appreciates at 3% annually
 
   // Allocate monthly savings: 20% cash, 40% investments, 40% retirement
   const savCash = monthlySavings * 0.20;
@@ -63,13 +64,14 @@ function projectScenario(
   const savRet  = monthlySavings * 0.40;
 
   for (let m = 0; m <= years * 12; m++) {
-    const nw = Math.round(c + inv + ret);
+    const nw = Math.round(c + inv + ret + re);
     if (m % 12 === 0) {
-      points.push({ year: m/12, nw, cash: Math.round(c), investments: Math.round(inv), retirement: Math.round(ret) });
+      points.push({ year: m/12, nw, cash: Math.round(c), investments: Math.round(inv), retirement: Math.round(ret), real_estate: Math.round(re) });
     }
     c   = c   * (1 + cashMonthly) + savCash;
     inv = inv * (1 + invMonthly)  + savInv;
     ret = ret * (1 + retMonthly)  + savRet;
+    re  = re  * (1 + reMonthly);
   }
   return points;
 }
@@ -148,7 +150,7 @@ export default function ProjectionsPage() {
 
   // Run all 3 scenarios
   const projData = scenarios.map(s =>
-    projectScenario(inputs.cash, inputs.investments, inputs.retirement,
+    projectScenario(inputs.cash, inputs.investments, inputs.retirement, inputs.real_estate || 0,
       monthlySavings, s.cashReturn, s.invReturn, s.retReturn, years)
   );
 
@@ -174,12 +176,13 @@ export default function ProjectionsPage() {
       </div>
 
       {/* Current state cards */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-6 gap-3">
         {[
           { label: "Current NW",   value: fmtM(inputs.current_nw),  color: "text-gray-900"   },
           { label: "Cash",         value: fmtM(inputs.cash),         color: "text-teal-600"   },
           { label: "Investments",  value: fmtM(inputs.investments),  color: "text-blue-600"   },
           { label: "Retirement",   value: fmtM(inputs.retirement),   color: "text-purple-600" },
+          { label: "Real Estate",  value: fmtM(inputs.real_estate || 0), color: "text-amber-600" },
           { label: "FIRE Target",  value: fmtM(fireNumber),          color: "text-indigo-600" },
         ].map(c => (
           <div key={c.label} className="bg-gray-50 rounded-lg px-4 py-3">
@@ -300,6 +303,7 @@ export default function ProjectionsPage() {
                   { label: "Cash",        value: finalPoint?.cash,        color: "bg-teal-400"   },
                   { label: "Investments", value: finalPoint?.investments,  color: "bg-blue-400"   },
                   { label: "Retirement",  value: finalPoint?.retirement,   color: "bg-purple-400" },
+                  { label: "Real Estate", value: finalPoint?.real_estate,  color: "bg-amber-400"  },
                 ].map(b => (
                   <div key={b.label} className="flex items-center gap-2 text-xs">
                     <span className={`w-2 h-2 rounded-full ${b.color}`} />
