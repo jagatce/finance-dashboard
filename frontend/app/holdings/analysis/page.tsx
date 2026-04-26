@@ -17,6 +17,8 @@ interface Analysis {
   commentary: string;
 }
 
+
+
 function fmtUSD(n: number | null) {
   if (n == null) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
@@ -37,6 +39,7 @@ export default function AnalysisPage() {
   const [loading, setLoading]         = useState(true);
   const [refreshing, setRefreshing]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
+
 
   async function load() {
     setLoading(true);
@@ -215,6 +218,8 @@ export default function AnalysisPage() {
 
         </div>
       )}
+
+
     </div>
   );
 }

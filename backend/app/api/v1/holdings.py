@@ -3,6 +3,7 @@ Holdings API routes.
 All routes require auth via require_auth dependency.
 Holdings island — zero coupling to accounts/balances/networth.
 """
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from app.core.database import get_db
@@ -229,3 +230,161 @@ def delete_account_holdings(
     deleted = db.query(Holding).filter(Holding.account_id == account_id).delete()
     db.commit()
     return {"deleted": deleted, "account_id": account_id}
+
+
+@router.get("/tax-efficiency")
+def get_tax_efficiency(db: Session = Depends(get_db), _: str = Depends(require_auth)):
+    """Compute tax efficiency score and recommendations based on holdings."""
+    import json
+    from sqlalchemy import text
+
+    # Load account type mapping from user_settings
+    mapping_row = db.execute(text(
+        "SELECT value FROM user_settings WHERE key = 'holdings_account_types'"
+    )).fetchone()
+    account_types = json.loads(mapping_row.value) if mapping_row else {}
+
+    # Get all holdings with values
+    rows = db.execute(text("""
+        SELECT account_id, ticker, name, asset_type, current_value, yfinance_ticker
+        FROM holdings WHERE current_value > 0
+        ORDER BY account_id, current_value DESC
+    """)).fetchall()
+
+    if not rows:
+        return {"score": None, "grade": None, "positions": [], "recommendations": [],
+                "matrix": [], "account_types": account_types, "error": "No holdings data"}
+
+    # Asset type tax efficiency classification
+    def classify_tax_efficiency(asset_type: str, ticker: str, name: str) -> dict:
+        t = (asset_type or "").lower()
+        n = (name or "").upper()
+        tk = (ticker or "").upper()
+
+        # Bonds
+        TAX_ADVANTAGED = ["traditional_401k", "roth", "hsa"]
+        if "bond" in n or "fixed" in n or "income" in n or tk in ("BND","AGG","TLT","IEF","SHY","VCIT","VCSH"):
+            return {"tax_type": "high", "label": "Bond/Fixed Income", "best_location": TAX_ADVANTAGED}
+        # YieldMax / covered call / high-income ETFs — must be in tax-advantaged
+        if "yieldmax" in n or "covered call" in n or "0dte" in n or "dividend" in n or tk in ("NVDY","MSTY","NFLY","YMAG","YMAX","ULTY","PLTY","YBTC","YBIT","QDTE","XDTE","SCHD","DVY","VYM","JEPI","JEPQ"):
+            return {"tax_type": "high", "label": "High-Income ETF", "best_location": TAX_ADVANTAGED}
+        # Target date funds
+        if "target" in n or "pmp" in n or "retire" in n:
+            return {"tax_type": "high", "label": "Target Date Fund", "best_location": TAX_ADVANTAGED}
+        import re
+        if re.search("20[3-9][0-9]", n):
+            return {"tax_type": "high", "label": "Target Date Fund", "best_location": TAX_ADVANTAGED}
+        # International (foreign tax credit benefit in taxable)
+        if "intl" in n or "international" in n or "foreign" in n or "emerging" in n:
+            return {"tax_type": "medium", "label": "International", "best_location": ["taxable"]}
+        # Broad index ETF (tax efficient)
+        if "index" in n or "s&p" in n or "total" in n or tk in ("VTI","VOO","FXAIX","SWTSX","ITOT"):
+            return {"tax_type": "low", "label": "Index Fund/ETF", "best_location": ["taxable", "traditional_401k", "roth"]}
+        # Growth ETF/Stock — fine in any tax-advantaged or taxable
+        if t == "etf" or t == "stock":
+            return {"tax_type": "low", "label": "ETF/Stock", "best_location": ["roth", "taxable", "traditional_401k", "hsa"]}
+        # Non-tickered / CUSIP funds — typically in employer plans, fine in tax-advantaged
+        if t in ("fund_nontickered", "fund_cusip"):
+            return {"tax_type": "medium", "label": "Mutual Fund", "best_location": ["traditional_401k", "roth", "hsa"]}
+
+        return {"tax_type": "low", "label": "Other", "best_location": ["taxable", "traditional_401k", "roth", "hsa"]}
+
+    # Score each position
+    total_value = sum(float(r.current_value) for r in rows)
+    score_deductions = 0
+    positions = []
+    recommendations = []
+
+    for r in rows:
+        acct_type = account_types.get(r.account_id, "unknown")
+        tax_info  = classify_tax_efficiency(r.asset_type, r.ticker, r.name)
+        value     = float(r.current_value)
+        pct       = round(value / total_value * 100, 1) if total_value > 0 else 0
+
+        # Is this asset misplaced?
+        misplaced = acct_type not in tax_info["best_location"] and acct_type != "unknown"
+        severity  = 0
+        if misplaced:
+            if tax_info["tax_type"] == "high":
+                severity = 3  # High tax drag in wrong account
+            elif tax_info["tax_type"] == "medium":
+                severity = 1
+            score_deductions += severity * (pct / 100)
+
+        positions.append({
+            "account_id":   r.account_id,
+            "account_type": acct_type,
+            "ticker":       r.ticker,
+            "name":         r.name,
+            "asset_type":   r.asset_type,
+            "value":        value,
+            "pct":          pct,
+            "tax_type":     tax_info["tax_type"],
+            "tax_label":    tax_info["label"],
+            "best_location": tax_info["best_location"],
+            "misplaced":    misplaced,
+            "severity":     severity,
+        })
+
+        if misplaced and severity >= 2 and value > 5000:
+            best = tax_info["best_location"][0].replace("_", " ").title()
+            recommendations.append({
+                "ticker":      r.ticker,
+                "name":        r.name,
+                "account_id":  r.account_id,
+                "account_type": acct_type,
+                "value":       value,
+                "action":      f"Move to {best} account",
+                "reason":      f"{tax_info['label']} generates high taxable income — better in {best}",
+                "severity":    severity,
+            })
+
+    # Final score
+    raw_score = max(0, 100 - (score_deductions * 20))
+    score = round(raw_score)
+    grade = "A" if score >= 90 else "B" if score >= 75 else "C" if score >= 60 else "D"
+
+    # Matrix: account x tax_type
+    accounts_seen = list(dict.fromkeys(p["account_id"] for p in positions))
+    matrix = []
+    for acct in accounts_seen:
+        acct_positions = [p for p in positions if p["account_id"] == acct]
+        acct_value = sum(p["value"] for p in acct_positions)
+        matrix.append({
+            "account_id":   acct,
+            "account_type": account_types.get(acct, "unknown"),
+            "total_value":  round(acct_value, 2),
+            "breakdown": {
+                "high":   round(sum(p["value"] for p in acct_positions if p["tax_type"] == "high"), 2),
+                "medium": round(sum(p["value"] for p in acct_positions if p["tax_type"] == "medium"), 2),
+                "low":    round(sum(p["value"] for p in acct_positions if p["tax_type"] == "low"), 2),
+            },
+            "has_misplaced": any(p["misplaced"] for p in acct_positions),
+        })
+
+    recommendations.sort(key=lambda x: x["severity"] * x["value"], reverse=True)
+
+    return {
+        "score":          score,
+        "grade":          grade,
+        "total_value":    round(total_value, 2),
+        "positions":      positions,
+        "recommendations": recommendations[:10],
+        "matrix":         matrix,
+        "account_types":  account_types,
+    }
+
+
+@router.post("/tax-efficiency/mapping")
+def save_account_type_mapping(body: dict, db: Session = Depends(get_db), _: str = Depends(require_auth)):
+    """Save account type mapping to user_settings."""
+    import json
+    from sqlalchemy import text
+    value = json.dumps(body.get("mapping", {}))
+    db.execute(text("""
+        INSERT INTO user_settings (key, value, updated_at)
+        VALUES ('holdings_account_types', :value, :updated_at)
+        ON CONFLICT(key) DO UPDATE SET value = :value, updated_at = :updated_at
+    """), {"value": value, "updated_at": datetime.utcnow().isoformat()})
+    db.commit()
+    return {"status": "saved"}
