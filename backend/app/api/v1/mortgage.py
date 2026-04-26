@@ -149,6 +149,56 @@ def create_mortgage(body: MortgageIn, db: Session = Depends(get_db), _=Depends(r
     return {"id": mid, "status": "created"}
 
 
+@router.get("/equity")
+def get_equity(db: Session = Depends(get_db), _=Depends(require_auth)):
+    """Returns equity for all properties — market value minus mortgage balance."""
+    rows = db.execute(text("""
+        SELECT
+            m.id, m.property_name, m.address,
+            m.estimated_market_value, m.market_value_date,
+            m.purchase_price, m.purchase_date
+        FROM mortgages m
+        WHERE m.estimated_market_value IS NOT NULL
+        ORDER BY m.purchase_date
+    """)).fetchall()
+
+    results = []
+    for r in rows:
+        # Get latest mortgage balance from balance_snapshots
+        # Match by account name containing "Mortgage" or "UNFCU"
+        bal_row = db.execute(text("""
+            SELECT b.balance FROM balance_snapshots b
+            JOIN accounts a ON b.account_id = a.id
+            WHERE a.category = 'loan'
+            AND (LOWER(a.name) LIKE '%mortgage%' OR LOWER(a.name) LIKE '%unfcu%')
+            AND b.snapshot_date = (
+                SELECT MAX(b2.snapshot_date) FROM balance_snapshots b2
+                WHERE b2.account_id = a.id
+            )
+            ORDER BY b.snapshot_date DESC LIMIT 1
+        """)).fetchone()
+
+        mortgage_balance = float(bal_row.balance) if bal_row else 0
+        market_value     = float(r.estimated_market_value)
+        equity           = round(market_value - mortgage_balance, 2)
+
+        results.append({
+            "id":                    r.id,
+            "property_name":         r.property_name,
+            "address":               r.address,
+            "market_value":          market_value,
+            "market_value_date":     r.market_value_date,
+            "mortgage_balance":      mortgage_balance,
+            "equity":                equity,
+            "purchase_price":        r.purchase_price,
+            "purchase_date":         r.purchase_date,
+            "appreciation":          round(market_value - (r.purchase_price or 0), 2) if r.purchase_price else None,
+        })
+
+    return results
+
+
+
 @router.get("/{mortgage_id}")
 def get_mortgage(mortgage_id: str, db: Session = Depends(get_db), _=Depends(require_auth)):
     m = db.execute(text("SELECT * FROM mortgages WHERE id = :id"), {"id": mortgage_id}).fetchone()
@@ -161,6 +211,32 @@ def get_mortgage(mortgage_id: str, db: Session = Depends(get_db), _=Depends(requ
         "mortgage": dict(m._mapping),
         "loans": [dict(l._mapping) for l in loans],
     }
+
+
+@router.put("/{mortgage_id}")
+def update_mortgage(mortgage_id: str, body: dict, db: Session = Depends(get_db), _=Depends(require_auth)):
+    allowed = {"estimated_market_value", "market_value_date", "property_name", "address", "notes"}
+    fields  = {k: v for k, v in body.items() if k in allowed}
+    if not fields:
+        raise HTTPException(400, "Nothing to update")
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+    fields["mid"] = mortgage_id
+    db.execute(text(f"UPDATE mortgages SET {set_clause} WHERE id = :mid"), fields)
+    db.commit()
+    return {"status": "updated"}
+
+
+@router.put("/{mortgage_id}")
+def update_mortgage(mortgage_id: str, body: dict, db: Session = Depends(get_db), _=Depends(require_auth)):
+    allowed = {"estimated_market_value", "market_value_date", "property_name", "address", "notes"}
+    fields  = {k: v for k, v in body.items() if k in allowed}
+    if not fields:
+        raise HTTPException(400, "Nothing to update")
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+    fields["mid"] = mortgage_id
+    db.execute(text(f"UPDATE mortgages SET {set_clause} WHERE id = :mid"), fields)
+    db.commit()
+    return {"status": "updated"}
 
 
 @router.delete("/{mortgage_id}")
@@ -215,7 +291,7 @@ def add_loan(body: LoanIn, db: Session = Depends(get_db), _=Depends(require_auth
 
 @router.put("/loan/{loan_id}")
 def update_loan(loan_id: str, body: dict, db: Session = Depends(get_db), _=Depends(require_auth)):
-    allowed = {"rate", "monthly_escrow", "monthly_extra_principal", "notes"}
+    allowed = {"rate", "monthly_escrow", "monthly_extra_principal", "notes", "is_active", "end_date"}
     fields  = {k: v for k, v in body.items() if k in allowed}
     if not fields:
         raise HTTPException(400, "Nothing to update")

@@ -119,6 +119,15 @@ export default function MortgageDetailPage() {
     }
   }
 
+  async function handleCloseLoan(loanId: string, endDate: string) {
+    await apiFetch(`/api/v1/mortgage/loan/${loanId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: false, end_date: endDate }),
+    });
+    fetchData();
+  }
+
   async function handleAddPayment() {
     await apiFetch("/api/v1/mortgage/payment/add", {
       method: "POST",
@@ -414,6 +423,15 @@ export default function MortgageDetailPage() {
                         className="text-gray-400 hover:text-indigo-600 transition-colors text-xs px-2 py-1 border border-gray-200 rounded hover:border-indigo-300">
                         Edit
                       </button>
+                      {loan.is_active && (
+                        <button onClick={() => {
+                          const endDate = prompt("Enter end date (YYYY-MM-DD):", new Date().toISOString().slice(0,10));
+                          if (endDate) handleCloseLoan(loan.id, endDate);
+                        }}
+                          className="text-gray-400 hover:text-amber-600 transition-colors text-xs px-2 py-1 border border-gray-200 rounded hover:border-amber-300">
+                          Close
+                        </button>
+                      )}
                       <button onClick={() => handleDeleteLoan(loan.id)}
                         className="text-gray-300 hover:text-red-500 transition-colors">
                         <Trash2 className="w-3.5 h-3.5" />

@@ -13,6 +13,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   cash:        "#14b8a6",
   taxable:     "#3b82f6",
   retirement:  "#a855f7",
+  real_estate: "#f59e0b",
   hsa:         "#06b6d4",
   alternative: "#f97316",
   manual:      "#9ca3af",
@@ -24,6 +25,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   cash:        "Cash",
   taxable:     "Investments",
   retirement:  "Retirement",
+  real_estate: "Real Estate",
   hsa:         "HSA",
   alternative: "Alternatives",
   manual:      "Manual",
@@ -83,7 +85,7 @@ export default function NetWorthPage() {
 
   // Allocation pie data (assets only)
   const breakdown   = summary?.category_breakdown ?? {};
-  const assetCats   = ["cash","taxable","retirement","hsa","alternative","manual"];
+  const assetCats   = ["cash","taxable","retirement","hsa","alternative","real_estate","manual"];
   const pieData     = assetCats
     .filter((k) => breakdown[k] > 0)
     .map((k) => ({ name: CATEGORY_LABELS[k], value: breakdown[k], key: k }));

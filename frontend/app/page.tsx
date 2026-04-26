@@ -15,6 +15,7 @@ const categoryColors: Record<string, string> = {
   retirement: "bg-purple-500",
   hsa: "bg-cyan-500",
   alternative: "bg-orange-500",
+  real_estate: "bg-amber-500",
   manual: "bg-gray-400",
   credit_card: "bg-red-500",
   loan: "bg-rose-700",
@@ -26,6 +27,7 @@ const categoryLabels: Record<string, string> = {
   retirement: "Retirement",
   hsa: "HSA",
   alternative: "Alternatives",
+  real_estate: "Real Estate",
   manual: "Manual",
   credit_card: "Credit Cards",
   loan: "Loans",
@@ -68,7 +70,7 @@ export default function Dashboard() {
   const owners = summary?.owner_breakdown ?? {};
 
   const assetCategories = Object.entries(breakdown).filter(([k]) =>
-    ["cash","taxable","retirement","hsa","alternative","manual"].includes(k)
+    ["cash","taxable","retirement","hsa","alternative","real_estate","manual"].includes(k)
   );
   const liabilityCategories = Object.entries(breakdown).filter(([k]) =>
     ["credit_card","loan"].includes(k)

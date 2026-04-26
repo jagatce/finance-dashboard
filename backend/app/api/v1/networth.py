@@ -8,7 +8,7 @@ import json
 
 router = APIRouter()
 
-ASSET_CATEGORIES = {"cash", "taxable", "retirement", "hsa", "alternative", "manual"}
+ASSET_CATEGORIES = {"cash", "taxable", "retirement", "hsa", "alternative", "manual", "real_estate"}
 LIABILITY_CATEGORIES = {"credit_card", "loan"}
 
 def get_latest_balances(db: Session):
@@ -49,6 +49,35 @@ def get_net_worth_summary(db: Session = Depends(get_db)):
         owner_breakdown[owner_name] = owner_breakdown.get(owner_name, 0) + (
             bal if cat in ASSET_CATEGORIES else -bal
         )
+
+    # Add home equity from mortgage table
+    from sqlalchemy import text
+    equity_rows = db.execute(text("""
+        SELECT m.estimated_market_value
+        FROM mortgages m
+        WHERE m.estimated_market_value IS NOT NULL
+    """)).fetchall()
+
+    for r in equity_rows:
+        # Get latest mortgage balance
+        bal_row = db.execute(text("""
+            SELECT b.balance FROM balance_snapshots b
+            JOIN accounts a ON b.account_id = a.id
+            WHERE a.category = 'loan'
+            AND (LOWER(a.name) LIKE '%mortgage%' OR LOWER(a.name) LIKE '%unfcu%')
+            AND b.snapshot_date = (
+                SELECT MAX(b2.snapshot_date) FROM balance_snapshots b2
+                WHERE b2.account_id = a.id
+            )
+            LIMIT 1
+        """)).fetchone()
+
+        mortgage_balance = float(bal_row.balance) if bal_row else 0
+        equity = round(float(r.estimated_market_value) - mortgage_balance, 2)
+
+        if equity > 0:
+            total_assets += equity
+            category_breakdown["real_estate"] = category_breakdown.get("real_estate", 0) + equity
 
     return {
         "total_assets": round(total_assets, 2),
