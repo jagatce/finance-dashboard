@@ -429,6 +429,45 @@ Analyzes asset location across tax-advantaged vs taxable accounts.
 - GET /api/v1/holdings/tax-efficiency — compute score + matrix + recommendations
 - POST /api/v1/holdings/tax-efficiency/mapping — save account type mapping
 
+## Holdings Review — /holdings/review (v0.9.8-9)
+
+### Overview
+Standalone page under Holdings. Zero coupling to networth/cashflow.
+1-year performance vs S&P 500 + 200 EMA trend analysis per position.
+
+### How it works
+- Fetches 1-year price history via yfinance for all tickered positions
+- Computes 1-year return + 200 EMA per ticker
+- Compares vs SPY 1-year return → status flag
+- Results cached in holdings_review_cache table (instant page load)
+- Refresh button triggers fresh yfinance fetch (~30-60 sec)
+
+### Status Flags
+- Outperform: position return > SPY + 5%
+- In-line: within ±5% of SPY
+- Underperform: position return < SPY - 5%
+- Watch: price below 200 EMA regardless of return
+- N/A: non-tickered/cusip funds (use proxy)
+
+### Proxy Mapping for N/A Funds
+- Auto-assign proxy ETF from fund name keywords (no config needed)
+- Keywords: "large cap"→SPY, "small/mid"→VXF, "international"→VXUS, "bond"→AGG, etc.
+- Manual override per fund stored in user_settings (key: fund_proxy_mapping)
+- Proxy mapping editor in UI — shows auto-assigned proxy, allows override
+
+### Summary Cards (top of page)
+- Portfolio 1Y: weighted avg return across all positions with data
+- S&P 500 1Y: SPY benchmark return
+- Per status: count + weighted avg return % + total $ value
+
+### New DB Tables
+- holdings_review_cache: caches full review result (id='latest')
+
+### Backend
+- GET /api/v1/holdings/review?refresh=bool — returns cached or fresh
+- GET/POST /api/v1/holdings/review/proxy-mapping — manage proxy overrides
+- app/services/holdings_review.py — yfinance fetch, EMA, status logic, proxy rules
+
 ### Known issues / TODO
 - npm run build has a Recharts tickFormatter type warning (non-blocking, works in dev)
 - spend_categories table is empty — using hardcoded default categories
@@ -506,7 +545,7 @@ Before writing any code, always confirm branch and create a feature branch:
   git checkout -b feature/<name>   # e.g. feature/insurance, feature/spending
   git log --oneline -3
 
-Current stable base: main (v0.9.7-tax-efficiency)
+Current stable base: main (v0.9.9-holdings-review)
 Holdings + Claude Sensor + Cash Flow (spending, income, savings rate, monthly review,
 import history, category breakdown, trends) are complete and merged to main.
 All new features should branch from main.
