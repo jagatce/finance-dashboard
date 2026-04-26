@@ -7,6 +7,29 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
 
+# Auto-assign proxy ETF from fund name keywords
+PROXY_RULES = [
+    (["large cap", "equity index", "s&p 500", "s&p500", "500 index", "lrg cp", "inst 500", "vang inst 500", "vang 500"], "SPY"),
+    (["small cap", "small/mid", "smid", "sm mid", "midcap", "mid cap", "sm midcap", "ext mkt", "extended market", "vg is ext"], "VXF"),
+    (["international", "intl", "foreign", "global", "world", "emerging", "intl div"], "VXUS"),
+    (["bond", "fixed income", "income fund", "blended sv", "putn/met"], "AGG"),
+    (["puritan", "balanced", "blended"], "VBIAX"),
+    (["contra", "contrafund", "contra pool"], "SPY"),  # Fidelity Contrafund is large cap growth
+    (["growth"], "VUG"),
+    (["value"], "VTV"),
+    (["real estate", "reit"], "VNQ"),
+    (["target", "pmp", "retire", "lifecycle", "trp retire", "vanguard target"], "VTHRX"),
+]
+
+def auto_proxy(name: str) -> str | None:
+    """Auto-assign proxy ETF from fund name keywords."""
+    n = name.lower()
+    for keywords, proxy in PROXY_RULES:
+        if any(kw in n for kw in keywords):
+            return proxy
+    return None
+
+
 def get_spy_return_1y() -> float | None:
     """Fetch SPY 1-year return."""
     try:

@@ -415,8 +415,9 @@ def get_holdings_review(refresh: bool = False, db: Session = Depends(get_db), _:
     if not rows:
         return {"spy_return_1y": None, "positions": [], "summary": {}}
 
-    tickered     = [r for r in rows if r.yfinance_ticker and r.asset_type != "fund_nontickered"]
-    non_tickered = [r for r in rows if not r.yfinance_ticker or r.asset_type == "fund_nontickered"]
+    NON_TICKERED_TYPES = ("fund_nontickered", "fund_cusip")
+    tickered     = [r for r in rows if r.asset_type not in NON_TICKERED_TYPES and r.yfinance_ticker]
+    non_tickered = [r for r in rows if r.asset_type in NON_TICKERED_TYPES or not r.yfinance_ticker]
 
     tickers = list(set(r.yfinance_ticker for r in tickered if r.yfinance_ticker))
     review_data = review_holdings(tickers) if tickers else {}
@@ -440,17 +441,43 @@ def get_holdings_review(refresh: bool = False, db: Session = Depends(get_db), _:
             "has_data": rd.get("error") is None,
         })
 
+    # Load manual proxy overrides from user_settings
+    proxy_override_row = db.execute(text(
+        "SELECT value FROM user_settings WHERE key = 'fund_proxy_mapping'"
+    )).fetchone()
+    import json as _pjson
+    proxy_overrides = _pjson.loads(proxy_override_row.value) if proxy_override_row else {}
+
+    from app.services.holdings_review import auto_proxy
+    # Collect proxy tickers needed for non-tickered funds
+    proxy_tickers_needed = {}
     for r in non_tickered:
+        proxy = proxy_overrides.get(r.ticker) or proxy_overrides.get(r.name) or auto_proxy(r.name or "")
+        if proxy:
+            proxy_tickers_needed[r.ticker] = proxy
+
+    # Fetch proxy data
+    proxy_data = review_holdings(list(set(proxy_tickers_needed.values()))) if proxy_tickers_needed else {}
+
+    for r in non_tickered:
+        proxy = proxy_tickers_needed.get(r.ticker)
+        rd    = proxy_data.get(proxy, {}) if proxy else {}
+        has_proxy = bool(proxy and rd.get("error") is None and rd.get("return_1y") is not None)
+
         positions.append({
-            "ticker": r.ticker, "yf_ticker": None, "name": r.name,
+            "ticker": r.ticker, "yf_ticker": proxy, "name": r.name,
             "account_id": r.account_id, "asset_type": r.asset_type,
             "current_value": float(r.current_value or 0),
             "last_price": float(r.last_price) if r.last_price else None,
-            "return_1y": None, "spy_return_1y": None, "vs_spy": None,
-            "ema200": None, "above_ema200": None,
-            "status": "N/A",
-            "recommendation": "Non-tickered fund — no benchmark comparison",
-            "has_data": False,
+            "return_1y":    rd.get("return_1y")    if has_proxy else None,
+            "spy_return_1y": rd.get("spy_return_1y") if has_proxy else None,
+            "vs_spy":       rd.get("vs_spy")       if has_proxy else None,
+            "ema200":       rd.get("ema200")        if has_proxy else None,
+            "above_ema200": rd.get("above_ema200")  if has_proxy else None,
+            "status":       rd.get("status", "N/A") if has_proxy else "N/A",
+            "recommendation": (f"via {proxy} proxy · " + rd.get("recommendation", "")) if has_proxy else "No proxy — add mapping in settings",
+            "has_data": has_proxy,
+            "proxy_ticker": proxy,
         })
 
     positions.sort(key=lambda x: (order.get(x["status"], 5), -(x["current_value"] or 0)))
@@ -489,3 +516,24 @@ def get_holdings_review(refresh: bool = False, db: Session = Depends(get_db), _:
     db.commit()
 
     return result
+
+
+@router.get("/review/proxy-mapping")
+def get_proxy_mapping(db: Session = Depends(get_db), _: str = Depends(require_auth)):
+    from sqlalchemy import text
+    import json
+    row = db.execute(text("SELECT value FROM user_settings WHERE key = 'fund_proxy_mapping'")).fetchone()
+    return {"mapping": json.loads(row.value) if row else {}}
+
+@router.post("/review/proxy-mapping")
+def save_proxy_mapping(body: dict, db: Session = Depends(get_db), _: str = Depends(require_auth)):
+    from sqlalchemy import text
+    import json
+    value = json.dumps(body.get("mapping", {}))
+    db.execute(text("""
+        INSERT INTO user_settings (key, value, updated_at)
+        VALUES ('fund_proxy_mapping', :value, :updated_at)
+        ON CONFLICT(key) DO UPDATE SET value = :value, updated_at = :updated_at
+    """), {"value": value, "updated_at": datetime.utcnow().isoformat()})
+    db.commit()
+    return {"status": "saved"}

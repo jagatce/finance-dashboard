@@ -26,11 +26,33 @@ export default function HoldingsReviewPage() {
   const [data, setData]         = useState<any>(null);
   const [loading, setLoading]   = useState(false);
   const [filter, setFilter]     = useState<string>("All");
-  const [fetched, setFetched]   = useState(false);
+  const [fetched, setFetched]     = useState(false);
+  const [proxyMap, setProxyMap]   = useState<Record<string,string>>({});
+  const [showProxy, setShowProxy] = useState(false);
+  const [savingProxy, setSavingProxy] = useState(false);
 
   useEffect(() => { fetchReview(); }, []);
 
   useEffect(() => { fetchReview(false); }, []);
+
+  useEffect(() => { fetchProxyMap(); }, []);
+
+  async function fetchProxyMap() {
+    const d = await apiFetch("/api/v1/holdings/review/proxy-mapping").then(r => r.json());
+    setProxyMap(d.mapping || {});
+  }
+
+  async function saveProxyMap() {
+    setSavingProxy(true);
+    try {
+      await apiFetch("/api/v1/holdings/review/proxy-mapping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mapping: proxyMap }),
+      });
+      await fetchReview(true);
+    } finally { setSavingProxy(false); }
+  }
 
   async function fetchReview(refresh = false) {
     setLoading(true);
@@ -85,20 +107,51 @@ export default function HoldingsReviewPage() {
       {fetched && !loading && data && (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-5 gap-3">
-            {[
-              { label: "SPY 1Y Return", value: data.spy_return_1y != null ? `${fmt(data.spy_return_1y)}%` : "—", color: "text-gray-900" },
-              { label: "Outperform",   value: data.summary?.outperform,   color: "text-green-600" },
-              { label: "In-line",      value: data.summary?.inline,       color: "text-blue-600"  },
-              { label: "Underperform", value: data.summary?.underperform, color: "text-red-500"   },
-              { label: "Watch",        value: data.summary?.watch,        color: "text-amber-600" },
-            ].map(c => (
-              <div key={c.label} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
-                <p className="text-xs text-gray-500">{c.label}</p>
-                <p className={`text-2xl font-bold mt-0.5 ${c.color}`}>{c.value}</p>
+          {(() => {
+            // Compute weighted avg return and total value per status
+            const byStatus = (status: string) => {
+              const ps = data.positions?.filter((p: any) => p.status === status && p.return_1y != null) || [];
+              const totalVal = ps.reduce((s: number, p: any) => s + (p.current_value || 0), 0);
+              const allVal   = data.positions?.filter((p: any) => p.status === status).reduce((s: number, p: any) => s + (p.current_value || 0), 0) || 0;
+              const wAvgRet  = totalVal > 0 ? ps.reduce((s: number, p: any) => s + p.return_1y * p.current_value, 0) / totalVal : null;
+              return { count: data.summary?.[status === "In-line" ? "inline" : status.toLowerCase()], totalVal: allVal, wAvgRet };
+            };
+            const cards = [
+              { label: "Portfolio 1Y",  color: "text-indigo-600", count: null,
+                totalVal: data.positions?.reduce((s: number, p: any) => s + (p.current_value || 0), 0),
+                wAvgRet: (() => {
+                  const ps = data.positions?.filter((p: any) => p.return_1y != null) || [];
+                  const tv = ps.reduce((s: number, p: any) => s + (p.current_value || 0), 0);
+                  return tv > 0 ? ps.reduce((s: number, p: any) => s + p.return_1y * p.current_value, 0) / tv : null;
+                })()
+              },
+              { label: "S&P 500 1Y",    color: "text-gray-900",  count: null, totalVal: null, wAvgRet: data.spy_return_1y },
+              { label: "Outperform",    color: "text-green-600", ...byStatus("Outperform")   },
+              { label: "In-line",       color: "text-blue-600",  ...byStatus("In-line")      },
+              { label: "Underperform",  color: "text-red-500",   ...byStatus("Underperform") },
+              { label: "Watch",         color: "text-amber-600", ...byStatus("Watch")        },
+            ];
+            return (
+              <div className="grid grid-cols-6 gap-3">
+                {cards.map(c => (
+                  <div key={c.label} className="bg-white border border-gray-200 rounded-xl px-4 py-3 space-y-1">
+                    <p className="text-xs text-gray-500">{c.label}</p>
+                    <p className={`text-xl font-bold ${c.color}`}>
+                      {c.count != null ? c.count : ""}
+                      {c.wAvgRet != null ? (
+                        <span className={c.count != null ? "text-sm ml-1" : ""}>
+                          {c.wAvgRet >= 0 ? "+" : ""}{fmt(c.wAvgRet)}%
+                        </span>
+                      ) : "—"}
+                    </p>
+                    {c.totalVal != null && c.totalVal > 0 && (
+                      <p className="text-xs text-gray-400">{fmtUSD(c.totalVal)}</p>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()}
 
           {/* Filter tabs */}
           <div className="flex gap-1">
@@ -118,6 +171,45 @@ export default function HoldingsReviewPage() {
               </button>
             ))}
           </div>
+
+          {/* Proxy mapping panel for N/A funds */}
+          {data.positions?.some((p: any) => p.status === "N/A") && (
+            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">N/A Fund Proxy Mapping</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Auto-assigned where possible. Override for employer-specific funds.</p>
+                </div>
+                <button onClick={() => setShowProxy(v => !v)}
+                  className="text-xs text-indigo-600 border border-indigo-200 rounded px-2 py-1">
+                  {showProxy ? "Hide" : "Edit"}
+                </button>
+              </div>
+              {showProxy && (
+                <div className="space-y-2">
+                  {data.positions?.filter((p: any) => !p.has_data || p.proxy_ticker).map((p: any, i: number) => (
+                    <div key={i} className="flex items-center gap-3 text-xs">
+                      <span className="text-gray-700 w-48 truncate" title={p.name}>{p.ticker}</span>
+                      <span className="text-gray-400 flex-1 truncate">{p.name}</span>
+                      <input
+                        placeholder={p.proxy_ticker || "e.g. SPY"}
+                        value={proxyMap[p.ticker] || ""}
+                        onChange={e => setProxyMap(prev => ({ ...prev, [p.ticker]: e.target.value.toUpperCase() }))}
+                        className="border border-gray-300 rounded px-2 py-1 w-24 text-xs"
+                      />
+                      {p.proxy_ticker && !proxyMap[p.ticker] && (
+                        <span className="text-gray-400 text-xs">auto: {p.proxy_ticker}</span>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={saveProxyMap} disabled={savingProxy}
+                    className="px-4 py-1.5 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700 disabled:opacity-50">
+                    {savingProxy ? "Saving…" : "Save & Refresh"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Positions table */}
           <div className="border border-gray-200 rounded-xl overflow-hidden">
@@ -143,6 +235,9 @@ export default function HoldingsReviewPage() {
                       <td className="px-4 py-3">
                         <p className="font-medium text-gray-900">{p.ticker}</p>
                         <p className="text-xs text-gray-400 truncate max-w-[180px]">{p.name}</p>
+                        {p.proxy_ticker && p.proxy_ticker !== p.yf_ticker && (
+                          <p className="text-xs text-indigo-400">proxy: {p.proxy_ticker}</p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">{p.account_id}</td>
                       <td className="px-4 py-3 text-right font-medium text-gray-700">{fmtUSD(p.current_value)}</td>
