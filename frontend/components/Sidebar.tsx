@@ -52,6 +52,7 @@ const nav = [
       { href: "/holdings",          label: "Positions",  icon: BarChart2 },
       { href: "/holdings/analysis",    label: "AI Analysis",    icon: Sparkles },
       { href: "/holdings/tax-efficiency", label: "Tax Efficiency", icon: Shield },
+      { href: "/holdings/review",         label: "Review",        icon: BarChart2 },
     ],
   },
   {

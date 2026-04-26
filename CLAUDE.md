@@ -400,6 +400,35 @@ Tracks full history: original purchase + each refinance + monthly payments.
 - Loan management: Close Loan button sets is_active=0 + end_date
 - On refinance: previous active loan auto-closed
 
+## Tax Efficiency — /holdings/tax-efficiency (v0.9.7)
+
+### Overview
+Standalone page under Holdings sidebar. Zero coupling to existing systems.
+Analyzes asset location across tax-advantaged vs taxable accounts.
+
+### How it works
+- Loads all holdings with current_value > 0
+- User maps each holding account_id to a tax treatment type
+- Mapping saved to user_settings table (key: holdings_account_types)
+- Each position classified by tax efficiency: high/medium/low
+- Score = 100 minus weighted deductions for misplaced high-tax assets
+- Grade: A (≥90), B (≥75), C (≥60), D (<60)
+
+### Asset Classification
+- High tax: bonds, target date funds (20XX pattern), YieldMax/covered call ETFs, dividend ETFs
+- Medium: international funds (foreign tax credit benefit in taxable), mutual funds
+- Low: broad index ETFs, stocks
+- Best locations: high-tax → traditional_401k/roth/hsa, international → taxable, low → anywhere
+
+### Account Types
+- traditional_401k, roth, taxable, hsa, unknown
+- Mapping editable inline on the page, persisted to DB
+
+### Pages & API
+- /holdings/tax-efficiency — standalone page
+- GET /api/v1/holdings/tax-efficiency — compute score + matrix + recommendations
+- POST /api/v1/holdings/tax-efficiency/mapping — save account type mapping
+
 ### Known issues / TODO
 - npm run build has a Recharts tickFormatter type warning (non-blocking, works in dev)
 - spend_categories table is empty — using hardcoded default categories
@@ -477,7 +506,7 @@ Before writing any code, always confirm branch and create a feature branch:
   git checkout -b feature/<name>   # e.g. feature/insurance, feature/spending
   git log --oneline -3
 
-Current stable base: main (v0.9.6-equity)
+Current stable base: main (v0.9.7-tax-efficiency)
 Holdings + Claude Sensor + Cash Flow (spending, income, savings rate, monthly review,
 import history, category breakdown, trends) are complete and merged to main.
 All new features should branch from main.

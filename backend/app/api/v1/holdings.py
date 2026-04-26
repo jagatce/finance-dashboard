@@ -388,3 +388,104 @@ def save_account_type_mapping(body: dict, db: Session = Depends(get_db), _: str 
     """), {"value": value, "updated_at": datetime.utcnow().isoformat()})
     db.commit()
     return {"status": "saved"}
+
+
+@router.get("/review")
+def get_holdings_review(refresh: bool = False, db: Session = Depends(get_db), _: str = Depends(require_auth)):
+    """Get holdings review. Returns cached result unless refresh=true."""
+    from app.services.holdings_review import review_holdings
+    from sqlalchemy import text
+    import json
+
+    # Return cached result if available and not forcing refresh
+    if not refresh:
+        cached = db.execute(text("SELECT result_json, generated_at FROM holdings_review_cache WHERE id = 'latest'")).fetchone()
+        if cached:
+            result = json.loads(cached.result_json)
+            result["cached_at"] = cached.generated_at
+            return result
+
+    rows = db.execute(text("""
+        SELECT DISTINCT ticker, name, account_id, asset_type,
+            yfinance_ticker, current_value, last_price
+        FROM holdings WHERE current_value > 0
+        ORDER BY current_value DESC
+    """)).fetchall()
+
+    if not rows:
+        return {"spy_return_1y": None, "positions": [], "summary": {}}
+
+    tickered     = [r for r in rows if r.yfinance_ticker and r.asset_type != "fund_nontickered"]
+    non_tickered = [r for r in rows if not r.yfinance_ticker or r.asset_type == "fund_nontickered"]
+
+    tickers = list(set(r.yfinance_ticker for r in tickered if r.yfinance_ticker))
+    review_data = review_holdings(tickers) if tickers else {}
+
+    order = {"Watch": 0, "Underperform": 1, "In-line": 2, "Outperform": 3, "N/A": 4}
+    positions = []
+
+    for r in tickered:
+        tk = r.yfinance_ticker
+        rd = review_data.get(tk, {})
+        positions.append({
+            "ticker": r.ticker, "yf_ticker": tk, "name": r.name,
+            "account_id": r.account_id, "asset_type": r.asset_type,
+            "current_value": float(r.current_value or 0),
+            "last_price": float(r.last_price) if r.last_price else None,
+            "return_1y": rd.get("return_1y"), "spy_return_1y": rd.get("spy_return_1y"),
+            "vs_spy": rd.get("vs_spy"), "ema200": rd.get("ema200"),
+            "above_ema200": rd.get("above_ema200"),
+            "status": rd.get("status", "N/A"),
+            "recommendation": rd.get("recommendation", "No data"),
+            "has_data": rd.get("error") is None,
+        })
+
+    for r in non_tickered:
+        positions.append({
+            "ticker": r.ticker, "yf_ticker": None, "name": r.name,
+            "account_id": r.account_id, "asset_type": r.asset_type,
+            "current_value": float(r.current_value or 0),
+            "last_price": float(r.last_price) if r.last_price else None,
+            "return_1y": None, "spy_return_1y": None, "vs_spy": None,
+            "ema200": None, "above_ema200": None,
+            "status": "N/A",
+            "recommendation": "Non-tickered fund — no benchmark comparison",
+            "has_data": False,
+        })
+
+    positions.sort(key=lambda x: (order.get(x["status"], 5), -(x["current_value"] or 0)))
+    spy_return = next((rd.get("spy_return_1y") for rd in review_data.values() if rd.get("spy_return_1y")), None)
+
+    # Sanitize nan/inf values
+    import math
+    def clean(v):
+        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            return None
+        return v
+
+    for p in positions:
+        for k in ["return_1y", "spy_return_1y", "vs_spy", "ema200", "last_price", "current_value"]:
+            p[k] = clean(p.get(k))
+
+    result = {
+        "spy_return_1y": spy_return,
+        "positions": positions,
+        "summary": {
+            "outperform":   sum(1 for p in positions if p["status"] == "Outperform"),
+            "inline":       sum(1 for p in positions if p["status"] == "In-line"),
+            "underperform": sum(1 for p in positions if p["status"] == "Underperform"),
+            "watch":        sum(1 for p in positions if p["status"] == "Watch"),
+            "na":           sum(1 for p in positions if p["status"] == "N/A"),
+        }
+    }
+
+    # Cache the result
+    import json as _json
+    db.execute(text("""
+        INSERT INTO holdings_review_cache (id, result_json, generated_at)
+        VALUES ('latest', :result_json, :generated_at)
+        ON CONFLICT(id) DO UPDATE SET result_json = :result_json, generated_at = :generated_at
+    """), {"result_json": _json.dumps(result), "generated_at": datetime.utcnow().isoformat()})
+    db.commit()
+
+    return result
