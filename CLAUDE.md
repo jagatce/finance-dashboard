@@ -387,6 +387,19 @@ Tracks full history: original purchase + each refinance + monthly payments.
 - Base vs with-extras comparison for payoff calculator
 - ARM support: fixed initial period, then rate steps by arm_cap (capped at lifetime_cap)
 
+## Home Equity in Net Worth (v0.9.6)
+- New `real_estate` asset category — amber color (#f59e0b)
+- Market value entered on /mortgage page (Set Value / Update Value button)
+- Equity = market value - latest UNFCU mortgage balance snapshot
+- Auto-included in net worth summary + category breakdown
+- Shows in dashboard Assets section and /networth allocation pie
+- mortgages table: added estimated_market_value + market_value_date columns
+- PUT /api/v1/mortgage/{id} — update market value + other fields
+- GET /api/v1/mortgage/equity — returns equity per property
+- Fixed: /equity route ordering (must be before /{mortgage_id} in FastAPI)
+- Loan management: Close Loan button sets is_active=0 + end_date
+- On refinance: previous active loan auto-closed
+
 ### Known issues / TODO
 - npm run build has a Recharts tickFormatter type warning (non-blocking, works in dev)
 - spend_categories table is empty — using hardcoded default categories
@@ -464,7 +477,7 @@ Before writing any code, always confirm branch and create a feature branch:
   git checkout -b feature/<name>   # e.g. feature/insurance, feature/spending
   git log --oneline -3
 
-Current stable base: main (v0.9.5-mortgage)
+Current stable base: main (v0.9.6-equity)
 Holdings + Claude Sensor + Cash Flow (spending, income, savings rate, monthly review,
 import history, category breakdown, trends) are complete and merged to main.
 All new features should branch from main.
