@@ -182,14 +182,21 @@ export default function ImportPage() {
   const runImport = async (paths: string[], force = false) => {
     if (paths.length === 0) return;
     setImporting(true);
+    const allResults: ImportResult[] = [];
     try {
-      const res  = await apiFetch("/api/v1/import/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ files: paths, force_reimport: force }),
-      });
-      const data = await res.json();
-      setResults(data.results ?? []);
+      // Process in batches of 3 to avoid proxy timeout (Claude API calls per file)
+      const BATCH = 3;
+      for (let i = 0; i < paths.length; i += BATCH) {
+        const batch = paths.slice(i, i + BATCH);
+        const res = await apiFetch("/api/v1/import/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ files: batch, force_reimport: force }),
+        });
+        const data = await res.json();
+        allResults.push(...(data.results ?? []));
+        setResults([...allResults]);
+      }
       await doScan();
     } finally {
       setImporting(false);

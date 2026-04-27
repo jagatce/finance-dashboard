@@ -254,12 +254,28 @@ def get_tax_efficiency(db: Session = Depends(get_db), _: str = Depends(require_a
     )).fetchone()
     account_types = json.loads(mapping_row.value) if mapping_row else {}
 
-    # Get all holdings with values
-    rows = db.execute(text("""
-        SELECT account_id, ticker, name, asset_type, current_value, yfinance_ticker
-        FROM holdings WHERE current_value > 0
-        ORDER BY account_id, current_value DESC
-    """)).fetchall()
+    # Get all holdings — use live price_cache when available, fall back to current_value
+    all_holdings = db.query(Holding).all()
+    tickers   = list({h.yfinance_ticker for h in all_holdings if h.yfinance_ticker})
+    price_map = {}
+    if tickers:
+        pc_rows = db.query(PriceCache).filter(PriceCache.ticker.in_(tickers)).all()
+        price_map = {r.ticker: r.price for r in pc_rows}
+
+    # Build rows with live value
+    from collections import namedtuple
+    HRow = namedtuple("HRow", ["account_id", "ticker", "name", "asset_type", "current_value", "yfinance_ticker"])
+    rows = []
+    for h in all_holdings:
+        live_price = price_map.get(h.yfinance_ticker) if h.yfinance_ticker else None
+        live_value = float(h.shares) * live_price if (h.shares and live_price) else None
+        value = live_value or (float(h.current_value) if h.current_value else None)
+        if value and value > 0:
+            rows.append(HRow(
+                account_id=h.account_id, ticker=h.ticker, name=h.name,
+                asset_type=h.asset_type, current_value=value, yfinance_ticker=h.yfinance_ticker
+            ))
+    rows.sort(key=lambda r: (r.account_id, -(r.current_value or 0)))
 
     if not rows:
         return {"score": None, "grade": None, "positions": [], "recommendations": [],
@@ -421,12 +437,34 @@ def get_holdings_review(refresh: bool = False, db: Session = Depends(get_db), _:
             result["cached_at"] = cached.generated_at
             return result
 
-    rows = db.execute(text("""
-        SELECT DISTINCT ticker, name, account_id, asset_type,
-            yfinance_ticker, current_value, last_price
-        FROM holdings WHERE current_value > 0
-        ORDER BY current_value DESC
-    """)).fetchall()
+    # Use live price_cache when available, fall back to current_value
+    all_h = db.query(Holding).all()
+    tickers_all = list({h.yfinance_ticker for h in all_h if h.yfinance_ticker})
+    price_map_r = {}
+    if tickers_all:
+        pc_rows = db.query(PriceCache).filter(PriceCache.ticker.in_(tickers_all)).all()
+        price_map_r = {r.ticker: r.price for r in pc_rows}
+
+    from collections import namedtuple
+    HRow2 = namedtuple("HRow2", ["ticker", "name", "account_id", "asset_type", "yfinance_ticker", "current_value", "last_price"])
+    rows = []
+    seen_tickers = set()
+    for h in all_h:
+        live_price = price_map_r.get(h.yfinance_ticker) if h.yfinance_ticker else None
+        live_value = float(h.shares) * live_price if (h.shares and live_price) else None
+        value = live_value or (float(h.current_value) if h.current_value else None)
+        if not value or value <= 0:
+            continue
+        key = (h.ticker, h.account_id)
+        if key in seen_tickers:
+            continue
+        seen_tickers.add(key)
+        rows.append(HRow2(
+            ticker=h.ticker, name=h.name, account_id=h.account_id,
+            asset_type=h.asset_type, yfinance_ticker=h.yfinance_ticker,
+            current_value=value, last_price=live_price or h.last_price
+        ))
+    rows.sort(key=lambda r: -(r.current_value or 0))
 
     if not rows:
         return {"spy_return_1y": None, "positions": [], "summary": {}}

@@ -797,3 +797,38 @@ with:
 3. Receive all CSV/PDF files from JP, drop into folders, batch test
 4. Fix any parser errors that surface
 5. Clean debug prints, commit, tag
+
+## Parser Status — v1.0.1 (all 22 files tested)
+
+### Spending parsers (cashflow_import.py)
+- chase:  CSV, standard format ✅
+- amex:   CSV, standard format ✅  
+- bofa:   CSV, 5-line header skip, splits spending/income ✅
+          income → income_transactions table (raw SQL)
+          spending → transactions table
+
+### Holdings parsers (holdings_import.py)
+- betterment:        CSV ✅
+- fidelity:          CSV (covers dell_401k, blackduck_401k, snps_401k, hsa, enhance_therapy, individual) ✅
+- m1:                CSV ✅
+- vanguard:          CSV, two-section file (positions + transactions, only positions parsed) ✅
+- empower (JP):      PDF, Mar 2026 monthly report, 26 positions ✅
+- empower_aegis (RK): PDF, quarterly 401k, 4 funds, split name lines ✅
+- apex_clearing (Ally IRA): PDF, equities section only, 3 positions ✅
+- bpas_nepc_403 (RK): PDF, 1 fund (FCNTX), balance+shares ✅
+- robinhood_taxable: PDF, 18 positions ✅
+- robinhood_ira:     PDF, multi-account (skips $0 Traditional, parses Roth), 7 positions ✅
+
+### PDF routing in parse_holdings()
+- "robinhood" in fname → parse_robinhood_pdf
+- "empower" OR "aegis" OR "401k" in fname → parse_empower_pdf
+- "bpas" OR "nepc" OR "403" in fname → parse_bpas_pdf
+- "ally" OR "apex" OR "statement" in fname → parse_apex_clearing_pdf
+- fallback → parse_empower_pdf
+
+### Known limitations
+- Empower Aegis fund names truncated (e.g. "BlackRock Retirement" not full name) — acceptable
+- Ally IRA: only equity positions parsed, cash balance not included as holding
+- BPAS NEPC: ticker_map hardcoded for known funds, unknown funds use truncated name
+- Vanguard Roth IRA: no file yet (only taxable account has CSV export)
+- Etrade SNPS, Personal Capital SIP: no files provided, folders exist but empty
