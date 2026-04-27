@@ -832,3 +832,36 @@ with:
 - BPAS NEPC: ticker_map hardcoded for known funds, unknown funds use truncated name
 - Vanguard Roth IRA: no file yet (only taxable account has CSV export)
 - Etrade SNPS, Personal Capital SIP: no files provided, folders exist but empty
+
+## Holdings Value Consistency — v1.0.2
+
+### Value source priority (all endpoints now consistent)
+1. Live price from price_cache × shares (most accurate for traded stocks)
+2. current_value from holdings table (import-time value, used for funds/ETFs without price_cache)
+3. total_cost_basis (last resort)
+
+### Endpoints using live prices
+- GET /api/v1/holdings/          ✅ (was already correct)
+- GET /api/v1/holdings/summary   ✅ (was already correct)
+- GET /api/v1/holdings/tax-efficiency ✅ fixed v1.0.2
+- GET /api/v1/holdings/review    ✅ fixed v1.0.2
+- GET /api/v1/holdings/analysis  uses holdings_review service, separate cache
+
+### Parser current_value fixes (v1.0.2)
+- Betterment: aggregates MarketValue column per ticker (lot-level CSV)
+- M1: uses Value column
+- All others had current_value set correctly already
+
+### Parser status (all 22 files tested, 185 positions)
+- chase CSV, amex CSV, bofa CSV → spending ✅
+- fidelity CSV, betterment CSV, m1 CSV, vanguard CSV → holdings ✅
+- empower PDF (JP monthly), empower_aegis PDF (RK quarterly) → holdings ✅
+- robinhood PDF (taxable + IRA multi-account) → holdings ✅
+- apex_clearing PDF (Ally IRA) → holdings ✅
+- bpas PDF (NEPC 403b) → holdings ✅
+
+### Known gaps
+- Etrade SNPS, Personal Capital SIP: folders exist, no files provided
+- Vanguard Roth IRA: no CSV export available yet
+- Ally IRA: cash balance ($7,305) not included as holding position
+- price_cache refresh needed after import to get live prices on new tickers
