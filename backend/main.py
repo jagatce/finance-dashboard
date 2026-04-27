@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import engine, Base
 from app.core.auth import require_auth
 import app.models.models
-from app.api.v1 import owners, accounts, networth, auth, backup, holdings, sensor, cashflow, mortgage
+from app.api.v1 import owners, accounts, networth, auth, backup, holdings, sensor, cashflow, mortgage, import_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -30,6 +30,7 @@ app.include_router(holdings.router)
 app.include_router(sensor.router)
 app.include_router(cashflow.router)
 app.include_router(mortgage.router)
+app.include_router(import_router.router)
 
 @app.get("/health")
 def health():

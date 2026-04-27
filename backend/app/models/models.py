@@ -73,6 +73,10 @@ class Transaction(Base):
     merchant         = Column(String)
     notes            = Column(Text)
     created_at       = Column(DateTime, default=datetime.utcnow)
+    owner_id         = Column(String)
+    source           = Column(String, default='manual')
+    is_recurring     = Column(Boolean, default=False)
+    batch_id         = Column(String)
 
 # ── Spend Categories ──────────────────────────────────────────────────────────
 class SpendCategory(Base):
@@ -147,6 +151,7 @@ class IncomeEntry(Base):
     is_gross       = Column(Boolean, default=True)
     notes          = Column(Text)
     created_at     = Column(DateTime, default=datetime.utcnow)
+    batch_id       = Column(String)
     owner = relationship("Owner", back_populates="income_entries")
 
 # ── Reviews ───────────────────────────────────────────────────────────────────
@@ -185,6 +190,7 @@ class Holding(Base):
     broker               = Column(String)   # betterment|fidelity|m1|empower
     as_of_date           = Column(Date, nullable=False)
     imported_at          = Column(DateTime, default=datetime.utcnow)
+    batch_id             = Column(String)
     yfinance_ticker      = Column(String)   # BRK.B -> BRK-B, else same as ticker
     last_price           = Column(Float)    # Last price from CSV (used for nontickered funds)
     current_value        = Column(Float)    # Current value from CSV (used for nontickered funds)
@@ -230,3 +236,18 @@ class TickerAnalysis(Base):
     analysis_json    = Column(Text)     # full Claude response
     technicals_json  = Column(Text)     # RSI, MACD, BB, EMA200, ATH
     refreshed_at     = Column(DateTime)
+
+class ImportBatch(Base):
+    __tablename__ = "import_batches"
+
+    id          = Column(String, primary_key=True)
+    source_type = Column(String, nullable=False)
+    filename    = Column(String)
+    account_id  = Column(String)
+    account_name = Column(String)
+    bank        = Column(String)
+    row_count   = Column(Integer)
+    income_count = Column(Integer, default=0)
+    imported_at = Column(DateTime)
+    file_hash   = Column(String)
+    folder_path = Column(String)

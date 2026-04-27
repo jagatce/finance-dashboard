@@ -239,7 +239,7 @@ export default function HoldingsReviewPage() {
                           <p className="text-xs text-indigo-400">proxy: {p.proxy_ticker}</p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{p.account_id}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{p.account_name || p.account_id}</td>
                       <td className="px-4 py-3 text-right font-medium text-gray-700">{fmtUSD(p.current_value)}</td>
                       <td className="px-4 py-3 text-right">
                         {p.return_1y != null ? (

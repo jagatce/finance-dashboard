@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.auth import require_auth
-from app.models.models import Holding, PriceCache, HoldingsAnalysis
+from app.models.models import Holding, PriceCache, HoldingsAnalysis, Account
 from app.services.holdings_import import parse_holdings
 from app.services.price_service import get_prices
 from app.services.analysis_service import refresh_analysis, get_latest_analysis
@@ -80,6 +80,9 @@ def list_holdings(
     _: None = Depends(require_auth),
 ):
     holdings  = db.query(Holding).all()
+    # Build account_id -> account_name lookup
+    accounts     = db.query(Account).all()
+    account_names = {a.id: a.name for a in accounts}
     tickers   = list({h.yfinance_ticker for h in holdings if h.yfinance_ticker})
     price_map = {}
     if tickers:
@@ -105,6 +108,7 @@ def list_holdings(
         result.append({
             "id":             h.id,
             "account_id":     h.account_id,
+            "account_name":   account_names.get(h.account_id, h.account_id),
             "broker":         h.broker,
             "ticker":         h.ticker,
             "name":           pr.name if pr else h.name,
@@ -130,6 +134,9 @@ def holdings_summary(
     _: None = Depends(require_auth),
 ):
     holdings  = db.query(Holding).all()
+    # Build account_id -> account_name lookup
+    accounts     = db.query(Account).all()
+    account_names = {a.id: a.name for a in accounts}
     tickers   = list({h.yfinance_ticker for h in holdings if h.yfinance_ticker})
     price_map = {}
     if tickers:
@@ -238,6 +245,9 @@ def get_tax_efficiency(db: Session = Depends(get_db), _: str = Depends(require_a
     import json
     from sqlalchemy import text
 
+    # account_id -> name lookup
+    account_names = {a.id: a.name for a in db.query(Account).all()}
+
     # Load account type mapping from user_settings
     mapping_row = db.execute(text(
         "SELECT value FROM user_settings WHERE key = 'holdings_account_types'"
@@ -313,6 +323,7 @@ def get_tax_efficiency(db: Session = Depends(get_db), _: str = Depends(require_a
 
         positions.append({
             "account_id":   r.account_id,
+            "account_name": account_names.get(r.account_id, r.account_id),
             "account_type": acct_type,
             "ticker":       r.ticker,
             "name":         r.name,
@@ -332,6 +343,7 @@ def get_tax_efficiency(db: Session = Depends(get_db), _: str = Depends(require_a
                 "ticker":      r.ticker,
                 "name":        r.name,
                 "account_id":  r.account_id,
+                "account_name": account_names.get(r.account_id, r.account_id),
                 "account_type": acct_type,
                 "value":       value,
                 "action":      f"Move to {best} account",
@@ -352,6 +364,7 @@ def get_tax_efficiency(db: Session = Depends(get_db), _: str = Depends(require_a
         acct_value = sum(p["value"] for p in acct_positions)
         matrix.append({
             "account_id":   acct,
+            "account_name": account_names.get(acct, acct),
             "account_type": account_types.get(acct, "unknown"),
             "total_value":  round(acct_value, 2),
             "breakdown": {
@@ -397,6 +410,9 @@ def get_holdings_review(refresh: bool = False, db: Session = Depends(get_db), _:
     from sqlalchemy import text
     import json
 
+    # account_id -> name lookup
+    account_names = {a.id: a.name for a in db.query(Account).all()}
+
     # Return cached result if available and not forcing refresh
     if not refresh:
         cached = db.execute(text("SELECT result_json, generated_at FROM holdings_review_cache WHERE id = 'latest'")).fetchone()
@@ -430,7 +446,7 @@ def get_holdings_review(refresh: bool = False, db: Session = Depends(get_db), _:
         rd = review_data.get(tk, {})
         positions.append({
             "ticker": r.ticker, "yf_ticker": tk, "name": r.name,
-            "account_id": r.account_id, "asset_type": r.asset_type,
+            "account_id": r.account_id, "account_name": account_names.get(r.account_id, r.account_id), "asset_type": r.asset_type,
             "current_value": float(r.current_value or 0),
             "last_price": float(r.last_price) if r.last_price else None,
             "return_1y": rd.get("return_1y"), "spy_return_1y": rd.get("spy_return_1y"),
@@ -466,7 +482,7 @@ def get_holdings_review(refresh: bool = False, db: Session = Depends(get_db), _:
 
         positions.append({
             "ticker": r.ticker, "yf_ticker": proxy, "name": r.name,
-            "account_id": r.account_id, "asset_type": r.asset_type,
+            "account_id": r.account_id, "account_name": account_names.get(r.account_id, r.account_id), "asset_type": r.asset_type,
             "current_value": float(r.current_value or 0),
             "last_price": float(r.last_price) if r.last_price else None,
             "return_1y":    rd.get("return_1y")    if has_proxy else None,

@@ -549,3 +549,251 @@ Current stable base: main (v0.9.9-holdings-review)
 Holdings + Claude Sensor + Cash Flow (spending, income, savings rate, monthly review,
 import history, category breakdown, trends) are complete and merged to main.
 All new features should branch from main.
+
+## Folder-Based Import — feature/folder-import (v1.0.0)
+
+### Overview
+Replaces browser upload UI with a folder-watching strategy.
+Drop CSVs/PDFs into the right folder, hit Scan on /import page, import.
+Zero change to isolation boundaries — router is a delivery mechanism only.
+
+### Folder Structure
+~/finance-dashboard/data/
+  spending/
+    american_express_blue_jp/
+    american_express_blue_rk/
+    american_express_delta_jp/
+    american_express_delta_rk/
+    bank_of_america_checking/
+    chase_amazon_jp/
+    chase_freedom_jp/
+    chase_freedom_rk/
+  holdings/
+    ally_roth_ira/
+    betterment_kids_fund/
+    blackduck_401k/
+    dell_401k/
+    empower_aegis_401k/
+    etrade_snps/
+    fidelity_enhance_therapy/
+    fidelity_hsa/
+    fidelity_individual_investment/
+    jetaka_llc/
+    m1_finance/
+    nepc_bpas_403/
+    personal_capital_sip/
+    robinhood_backdoor_roth_ira/
+    robinhood_individual_investment/
+    snps_401k/
+    timberland_rental_income_fund/
+    vanguard_roth_ira/
+    vanguard_taxable/
+
+### Folder Naming Convention
+Folder name = _normalize(account.name):
+  - strip(), lowercase
+  - remove apostrophes, dashes, dots
+  - all non-alphanumeric runs -> underscore
+  - strip leading/trailing underscores
+Example: 'Fidelity - Individual Investment' -> 'fidelity_individual_investment'
+         'American Express Blue JP'         -> 'american_express_blue_jp'
+This is mechanical — folder names are always derived from DB account names, never invented.
+
+### Dedup Strategy
+File identity = SHA256 hash of file bytes stored in import_batches.file_hash.
+Same file dropped again = status "imported" on scan, not re-imported unless forced.
+Filename alone is NOT used for dedup (same name, different content = new import).
+
+### New Files
+- backend/app/services/folder_scanner.py — scan_all(db) returns spending+holdings file statuses
+- backend/app/api/v1/import_router.py    — GET /scan, POST /run, GET /batches, POST /batches/{id}/rerun
+- backend/migrate_folder_import.py       — adds file_hash + folder_path to import_batches (already run)
+- frontend/app/import/page.tsx           — /import page, scan + select + import UI
+
+### DB Changes
+import_batches table: two new columns (already migrated)
+  file_hash   TEXT   — SHA256 of file bytes
+  folder_path TEXT   — absolute path to subfolder on disk
+No other tables touched.
+
+### ImportBatch SQLAlchemy Model
+Added to app/models/models.py (was missing — table existed but no ORM class).
+Maps to existing import_batches table exactly.
+
+### Isolation — Absolute Rules (do not revisit)
+
+HOLDINGS island — writes only to: holdings, price_cache, holdings_analysis, import_batches
+  Powers only: /holdings, /holdings/analysis, /holdings/tax-efficiency, /holdings/review
+  NEVER touches: balance_snapshots, net_worth_snapshots, accounts balances, dashboard NW,
+                 transactions, income_transactions, spend_categories
+
+CASH FLOW island — writes only to: transactions, income_transactions, reviews, import_batches
+  Powers only: /cashflow (Spending/Income/Savings Rate/Recurring/Monthly Review tabs),
+               /forecast, /projections
+  NEVER touches: holdings tables, price_cache, balance_snapshots, dashboard NW number,
+                 accounts page balances
+
+BALANCES / NET WORTH — driven by balance_snapshots only
+  Entered manually on /balances page
+  Powers: dashboard, /networth, /accounts, /accounts/category/*
+  NEVER reads from holdings or transactions tables
+
+FOLDER IMPORT ROUTER — delivery mechanism only
+  Calls existing parsers: cashflow_import.py (spending) and holdings_import.py (holdings)
+  Adds zero new coupling between islands
+  Isolation that existed before this feature is fully preserved after it
+
+### Resuming This Feature
+Branch: feature/folder-import
+Status at last session: scanner verified all-OK, ImportBatch model added to models.py,
+  migration run, folders created. Next: write import_router.py, register in main.py,
+  build /import frontend page, add sidebar entry.
+Before writing router, confirm: cashflow_import.py parse_csv/detect_bank signatures,
+  holdings_import.py parse_holdings signature, import_batches id format (UUID vs int).
+
+## Data Backup — Pre Folder-Import Migration
+
+Before wiping live data to start fresh with folder-based import, all four
+tables were backed up to _bak_ tables in the same DB. Counts at backup time:
+  transactions:   78 rows
+  income_entries: 0 rows
+  import_batches: 10 rows
+  holdings:       162 rows
+
+### Restore command (if needed)
+sqlite3 ~/finance-dashboard/backend/finance.db << 'SQL'
+INSERT INTO transactions   SELECT * FROM _bak_transactions;
+INSERT INTO income_entries SELECT * FROM _bak_income_entries;
+INSERT INTO import_batches SELECT * FROM _bak_import_batches;
+INSERT INTO holdings       SELECT * FROM _bak_holdings;
+SQL
+
+### Drop backups (once folder import is verified stable)
+sqlite3 ~/finance-dashboard/backend/finance.db << 'SQL'
+DROP TABLE _bak_transactions;
+DROP TABLE _bak_income_entries;
+DROP TABLE _bak_import_batches;
+DROP TABLE _bak_holdings;
+SQL
+
+### Additional tables wiped during folder-import migration
+  price_cache:           131 rows (holdings prices — repopulated on next price refresh)
+  holdings_analysis:     1 row   (Claude analysis — repopulated on next analysis run)
+  holdings_review_cache: 1 row   (1Y review cache — repopulated on next review refresh)
+  ticker_analysis:       18 rows (sensor analysis — repopulated on next sensor refresh)
+  income_entries:        0 rows  (BofA income rows go to transactions, not income_entries)
+
+  income_transactions:   27 rows (BofA income split rows — separate table from income_entries)
+  Note: income_transactions is the Cash Flow > Income tab source, backed up to _bak_income_transactions
+
+## Folder Import — Debug Status (current session end)
+
+### What works
+- Scanner: scan_all() correctly finds files, matches accounts, deduplicates by SHA256
+- Router: POST /api/v1/import/run reaches backend, parse_transactions returns 10 rows
+- Batch created in DB session (flush succeeds, id generated)
+- commit() called but "DEBUG commit done" never prints — silent failure on commit
+
+### Root cause hypothesis
+Transaction model has account_id = Column(String, ForeignKey("accounts.id"), nullable=False)
+The router sets row["account_id"] = str(f.account_id) where f.account_id is an int from DB.
+FK constraint may be failing silently — accounts.id is VARCHAR (UUID), not int.
+Need to verify: what does f.account_id actually contain vs what accounts.id looks like.
+
+### Fix to try next session
+1. Check accounts.id format:
+   sqlite3 finance.db "SELECT id, name FROM accounts WHERE name LIKE '%Chase Freedom JP%';"
+
+2. Check what parse_transactions returns for each row's keys:
+   Print first row from parsed["transactions"] to see all keys and values
+
+3. Likely fix: the Transaction model FK or a column mismatch is causing rollback on commit.
+   Try wrapping commit in try/except to surface the real error:
+
+In _do_spending(), replace:
+    db.commit()
+with:
+    try:
+        db.commit()
+        print('DEBUG commit done')
+    except Exception as e:
+        print(f'DEBUG commit FAILED: {e}')
+        db.rollback()
+        raise
+
+### Files written this session
+- backend/app/services/folder_scanner.py        DONE
+- backend/app/api/v1/import_router.py           DONE (has debug logs, clean before tagging)
+- backend/app/models/models.py                  DONE (ImportBatch, batch_id on Transaction/Holding/IncomeEntry)
+- backend/migrate_folder_import.py              DONE (already run)
+- frontend/app/import/page.tsx                  DONE (has debug logs, clean before tagging)
+- frontend/components/Sidebar.tsx               DONE (Import entry added with Upload icon)
+- main.py                                       DONE (import_router registered)
+
+### Next session start checklist
+1. git status — confirm on feature/folder-import branch
+2. Apply the commit try/except fix above
+3. Run import, confirm commit error surfaces
+4. Fix root cause (likely FK or column mismatch)
+5. Verify transactions appear in DB after import
+6. Test BofA CSV (spending + income split)
+7. Test a holdings CSV (Fidelity or Betterment)
+8. Remove all DEBUG print statements
+9. git commit + tag v1.0.0-folder-import
+10. Update CLAUDE.md with final stable state
+
+## Folder Import — Session 2 Progress
+
+### What works end-to-end
+- Chase CSV: parses, auto-categorizes via Claude, inserts to transactions ✅
+- BofA CSV: splits correctly — spending → transactions, income → income_transactions ✅
+- Holdings CSV: parses and inserts to holdings table ✅
+- Dedup: same file hash = "imported" on rescan, no double import ✅
+- Re-import: force_reimport=True wipes old batch and re-runs ✅
+
+### Key fixes made this session
+1. Transaction model was missing owner_id, source, is_recurring, batch_id — added
+2. Holding + IncomeEntry models missing batch_id — added + migrated
+3. date columns from parse_transactions come as strings — convert with strptime before ORM insert
+4. datetime name collision inside loop — use `import datetime as dt` inside loop
+5. BofA income rows are transaction-shaped — must go to income_transactions via raw SQL
+   NOT into transactions table and NOT into income_entries table
+   Uses same SQL pattern as cashflow.py lines 235-255
+6. Unknown keys from parse_transactions (e.g. full_description, owner_hint) must be
+   stripped before Transaction(**row) — use valid_cols allowlist
+7. Auto-categorize: _auto_categorize() calls Claude API (claude-opus-4-5) in one batch
+   per file, applied to spending transactions only, non-fatal if API fails
+
+### income_transactions insert shape (must match exactly)
+    (id, owner_id, date, source_name, income_type, amount, notes, created_at)
+    owner_id = inc.get("owner_id") or inc.get("owner_hint") or "unknown"
+    date     = inc.get("transaction_date", "")   # string YYYY-MM-DD
+    notes    = inc.get("full_description")
+
+### valid_cols for Transaction insert
+    "id", "account_id", "transaction_date", "posted_date", "description",
+    "amount", "category", "subcategory", "merchant", "notes", "created_at",
+    "owner_id", "source", "is_recurring", "batch_id"
+
+### Outstanding issues to fix next session
+1. Holdings page shows account_id (UUID) instead of account name
+   Fix: JOIN holdings with accounts table in GET /api/v1/holdings/ endpoint
+   OR store account_name on the holding row at import time (simpler)
+2. Need to batch-test all CSV/PDF files together before marking feature complete
+   JP will provide all files — test import flow for each bank/broker
+3. Remove all remaining debug prints from import_router.py
+4. git commit + tag v1.0.0-folder-import once all files tested
+
+### Files changed this session (all on feature/folder-import branch)
+- backend/app/api/v1/import_router.py   — income fix, auto-categorize, date conversion
+- backend/app/models/models.py          — Transaction 4 cols, Holding+IncomeEntry batch_id
+- backend/app/services/folder_scanner.py — complete
+- frontend/app/import/page.tsx          — complete (minor defensive fixes)
+- frontend/components/Sidebar.tsx       — Import entry with Upload icon
+
+### Next session start
+1. git status — confirm on feature/folder-import
+2. Fix holdings account name display (see issue #1 above)
+3. Receive all CSV/PDF files from JP, drop into folders, batch test
+4. Fix any parser errors that surface
+5. Clean debug prints, commit, tag

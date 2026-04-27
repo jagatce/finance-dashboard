@@ -28,3 +28,6 @@ Thumbs.db
 *.key
 *.pem
 access_tokens*
+
+# Personal financial data — never commit
+data/

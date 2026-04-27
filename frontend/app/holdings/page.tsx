@@ -6,6 +6,7 @@ import { Upload, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
 interface Position {
   id: number;
   account_id: string;
+  account_name?: string;
   broker: string;
   ticker: string;
   name: string;
@@ -93,7 +94,8 @@ export default function HoldingsPage() {
 
   useEffect(() => { load(); }, []);
 
-  const accounts = ["all", ...Array.from(new Set(positions.map(p => p.account_id))).sort()];
+  const accounts = ["all", ...Array.from(new Set(positions.map(p => p.account_name || p.account_id))).sort()];
+  const accountIdByName: Record<string, string> = Object.fromEntries(positions.map(p => [p.account_name || p.account_id, p.account_id]));
 
 
 
@@ -107,7 +109,7 @@ export default function HoldingsPage() {
   }
 
   const displayed = positions
-    .filter(p => filterAccount === "all" || p.account_id === filterAccount)
+    .filter(p => filterAccount === "all" || (p.account_name || p.account_id) === filterAccount)
     .sort((a, b) => {
       let av: number, bv: number;
       if (sortField === "value") {
@@ -349,7 +351,7 @@ export default function HoldingsPage() {
                       {p.asset_type}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">{p.account_id}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{p.account_name || p.account_id}</td>
                   <td className="px-4 py-3 text-right font-mono text-gray-600">{fmtUSD(p.cost_basis)}</td>
                   <td className="px-4 py-3 text-right font-mono text-gray-900">{fmtUSD(p.price)}</td>
                   <td className="px-4 py-3 text-right font-mono text-gray-600 hidden sm:table-cell">{fmt(p.quantity, 4)}</td>

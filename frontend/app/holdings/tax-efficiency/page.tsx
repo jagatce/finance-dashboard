@@ -132,7 +132,7 @@ export default function TaxEfficiencyPage() {
                 <p className="text-xs text-gray-400">Set the tax treatment for each holding account.</p>
                 {taxData.matrix?.map((acct: any) => (
                   <div key={acct.account_id} className="flex items-center gap-3">
-                    <span className="text-sm text-gray-700 w-48 truncate">{acct.account_id}</span>
+                    <span className="text-sm text-gray-700 w-48 truncate">{acct.account_name || acct.account_id}</span>
                     <select
                       value={mapping[acct.account_id] || "unknown"}
                       onChange={e => setMapping(prev => ({ ...prev, [acct.account_id]: e.target.value }))}
@@ -171,7 +171,7 @@ export default function TaxEfficiencyPage() {
                 <tbody className="divide-y divide-gray-100">
                   {taxData.matrix?.map((acct: any) => (
                     <tr key={acct.account_id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 font-medium text-gray-700">{acct.account_id}</td>
+                      <td className="px-4 py-2.5 font-medium text-gray-700">{acct.account_name || acct.account_id}</td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs capitalize">{(acct.account_type || "unknown").replace(/_/g, " ")}</td>
                       <td className="px-4 py-2.5 text-right font-medium">{fmtUSD(acct.total_value)}</td>
                       <td className="px-4 py-2.5 text-right text-red-500 text-xs">{acct.breakdown.high > 0 ? fmtUSD(acct.breakdown.high) : "—"}</td>
@@ -202,7 +202,7 @@ export default function TaxEfficiencyPage() {
                     <div>
                       <p className="text-sm font-medium text-gray-800">{r.name || r.ticker} — {fmtUSD(r.value)}</p>
                       <p className="text-xs text-gray-600 mt-0.5">{r.action} · {r.reason}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">Currently in: {(r.account_type || "unknown").replace(/_/g," ")} ({r.account_id})</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Currently in: {(r.account_type || "unknown").replace(/_/g," ")} ({r.account_name || r.account_id})</p>
                     </div>
                   </div>
                 ))}
