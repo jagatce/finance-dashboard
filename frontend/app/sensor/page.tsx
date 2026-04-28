@@ -198,13 +198,24 @@ export default function SensorPage() {
     setRefreshingAll(true);
     setMsg(null);
     try {
-      const res  = await apiFetch("/api/v1/sensor/refresh/all", { method: "POST" });
+      // Call backend directly to bypass Next.js proxy 30s timeout
+      // This request can take 10-15 minutes for a full portfolio refresh
+      const token = typeof window !== "undefined" ? sessionStorage.getItem("fineos_token") : null;
+      const res  = await fetch("http://localhost:8000/api/v1/sensor/refresh/all", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "x-auth-token": token } : {}),
+        },
+        signal: AbortSignal.timeout(20 * 60 * 1000), // 20 minute timeout
+      });
       const data = await res.json();
       const ok   = data.refreshed?.length ?? 0;
       const fail = data.failed?.length ?? 0;
-      setMsg(`✓ Refreshed ${ok} tickers${fail > 0 ? `, ${fail} failed` : ""}`);
+      const total = data.total ?? ok + fail;
+      setMsg(`✓ Refreshed ${ok}/${total} tickers${fail > 0 ? ` (${fail} failed)` : ""}`);
       await load();
-    } catch { setMsg("Refresh all failed"); }
+    } catch { setMsg("Refresh all failed — request may have timed out"); }
     setRefreshingAll(false);
   }
 

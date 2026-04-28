@@ -6,10 +6,8 @@ import json
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from anthropic import Anthropic
-from app.models.models import TickerAnalysis
+from app.models.models import TickerAnalysis, PriceCache
 from app.services.technicals_service import fetch_technicals
-
-client = Anthropic()
 
 SYSTEM_PROMPT = """You are a quantitative financial analyst. You will receive technical and fundamental data for a single ticker.
 Respond ONLY with a valid JSON object — no markdown, no preamble, no explanation outside the JSON.
@@ -45,8 +43,11 @@ Keep risks and catalysts as short phrases (2-5 words each), max 4 each.
 def analyze_ticker(ticker: str, db: Session) -> dict:
     """
     Fetch technicals, call Claude, store result in ticker_analysis.
+    Also upserts fresh price into price_cache so wafer list shows live price.
     Returns the full analysis dict.
     """
+    client = Anthropic()  # instantiated here so ANTHROPIC_API_KEY is read after load_dotenv()
+
     # Fetch technicals + fundamentals
     technicals = fetch_technicals(ticker)
     if "error" in technicals:
@@ -99,8 +100,28 @@ FUNDAMENTALS
 
     analysis = json.loads(raw)
 
-    # Upsert into ticker_analysis
     now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    # Upsert price_cache so wafer list always shows fresh price after analysis.
+    # Only update price/name/updated_at — never null out day_change_pct, sector,
+    # asset_type, prev_close, currency which price_service.py owns.
+    fund_data = technicals.get("fundamentals", {})
+    pc = db.query(PriceCache).filter(PriceCache.ticker == ticker).first()
+    if pc:
+        pc.price      = technicals["price"]
+        pc.name       = fund_data.get("name") or pc.name or ticker
+        pc.updated_at = now
+        # preserve all other columns — do not overwrite with None
+    else:
+        # New row — sensor only knows price/name, rest stay NULL until price_service runs
+        db.add(PriceCache(
+            ticker     = ticker,
+            price      = technicals["price"],
+            name       = fund_data.get("name") or ticker,
+            updated_at = now,
+        ))
+
+    # Upsert ticker_analysis
     row = db.query(TickerAnalysis).filter(TickerAnalysis.ticker == ticker).first()
     if row:
         row.signal          = analysis.get("signal")
@@ -117,6 +138,7 @@ FUNDAMENTALS
             technicals_json = json.dumps(technicals),
             refreshed_at    = now,
         ))
+
     db.commit()
 
     return {"analysis": analysis, "technicals": technicals}

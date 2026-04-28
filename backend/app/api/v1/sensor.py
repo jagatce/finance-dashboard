@@ -4,6 +4,8 @@ Per-ticker technical + fundamental + Claude analysis.
 Watchlist management (Research tab).
 Portfolio tickers come from holdings table (no separate storage).
 """
+import re
+import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -14,6 +16,32 @@ from app.services.sensor_service import analyze_ticker, get_ticker_analysis
 from app.services.technicals_service import fetch_technicals
 
 router = APIRouter(prefix="/api/v1/sensor", tags=["sensor"])
+
+CUSIP_RE = re.compile(r'^[A-Z0-9]{9}$')
+VALID_TICKER_RE = re.compile(r'^[A-Z]{1,5}(-[A-Z]{1,2})?$|^[A-Z]{5}X$')
+
+def is_valid_ticker(t: str) -> bool:
+    if not t:
+        return False
+    if ' ' in t:
+        return False
+    if CUSIP_RE.match(t):
+        return False
+    if len(t) > 6:
+        return False
+    return bool(VALID_TICKER_RE.match(t))
+
+def get_all_valid_tickers(db: Session) -> list[str]:
+    """All valid tickers from holdings + watchlist, deduplicated."""
+    tickers: set[str] = set()
+    for h in db.query(Holding).all():
+        t = h.yfinance_ticker
+        if t and is_valid_ticker(t):
+            tickers.add(t)
+    for w in db.query(Watchlist).all():
+        if is_valid_ticker(w.ticker):
+            tickers.add(w.ticker)
+    return sorted(tickers)
 
 
 # ── Watchlist (Research tab) ──────────────────────────────────────────────────
@@ -41,6 +69,8 @@ def add_to_watchlist(
     ticker = body.ticker.strip().upper()
     if not ticker:
         raise HTTPException(status_code=400, detail="Ticker is required")
+    if not is_valid_ticker(ticker):
+        raise HTTPException(status_code=400, detail=f"{ticker} is not a valid ticker symbol")
     existing = db.query(Watchlist).filter(Watchlist.ticker == ticker).first()
     if existing:
         raise HTTPException(status_code=409, detail=f"{ticker} already in watchlist")
@@ -73,7 +103,7 @@ def portfolio_tickers(
     seen: dict[str, list[str]] = {}
     for h in holdings:
         t = h.yfinance_ticker
-        if not t:
+        if not t or not is_valid_ticker(t):
             continue
         if t not in seen:
             seen[t] = []
@@ -91,7 +121,7 @@ def list_all_sensor_tickers(
 ):
     """
     Return all tickers with stored analysis + price cache data.
-    Used to populate wafer rows on both tabs.
+    Price comes from price_cache (live) with technicals_json as fallback.
     """
     rows = db.query(TickerAnalysis).all()
     price_map = {}
@@ -102,14 +132,13 @@ def list_all_sensor_tickers(
 
     result = []
     for r in rows:
-        pr = price_map.get(r.ticker)
-        import json
+        pr   = price_map.get(r.ticker)
         tech = json.loads(r.technicals_json) if r.technicals_json else {}
         result.append({
             "ticker":       r.ticker,
             "signal":       r.signal,
             "health_score": r.health_score,
-            "price":        tech.get("price") or (pr.price if pr else None),
+            "price":        (pr.price if pr else None) or tech.get("price"),
             "ema200":       tech.get("ema200"),
             "delta_ema":    tech.get("delta_ema"),
             "rsi":          tech.get("rsi"),
@@ -136,6 +165,25 @@ def get_ticker(
     return data
 
 
+# ── /refresh/all MUST be above /{ticker}/refresh ─────────────────────────────
+
+@router.post("/refresh/all")
+def refresh_all(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_auth),
+):
+    """Analyze every valid ticker from holdings + watchlist."""
+    tickers = get_all_valid_tickers(db)
+    results = {"refreshed": [], "failed": [], "total": len(tickers)}
+    for t in tickers:
+        try:
+            analyze_ticker(t, db)
+            results["refreshed"].append(t)
+        except Exception as e:
+            results["failed"].append({"ticker": t, "error": str(e)})
+    return results
+
+
 @router.post("/{ticker}/refresh")
 def refresh_ticker(
     ticker: str,
@@ -144,26 +192,10 @@ def refresh_ticker(
 ):
     """Trigger fresh technicals fetch + Claude analysis for a ticker."""
     ticker = ticker.upper()
+    if not is_valid_ticker(ticker):
+        raise HTTPException(status_code=400, detail=f"{ticker} is not a valid ticker symbol")
     try:
         result = analyze_ticker(ticker, db)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return result
-
-
-@router.post("/refresh/all")
-def refresh_all(
-    db: Session = Depends(get_db),
-    _: None = Depends(require_auth),
-):
-    """Refresh all tickers currently in ticker_analysis table."""
-    rows    = db.query(TickerAnalysis).all()
-    tickers = [r.ticker for r in rows]
-    results = {"refreshed": [], "failed": []}
-    for t in tickers:
-        try:
-            analyze_ticker(t, db)
-            results["refreshed"].append(t)
-        except Exception as e:
-            results["failed"].append({"ticker": t, "error": str(e)})
-    return results
