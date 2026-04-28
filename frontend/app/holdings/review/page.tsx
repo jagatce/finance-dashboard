@@ -22,8 +22,20 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; icon: any; labe
 
 const FILTERS = ["All", "Watch", "Underperform", "In-line", "Outperform", "N/A"] as const;
 
+
+function fmtRefreshTime(d: Date): string {
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 export default function HoldingsReviewPage() {
   const [data, setData]         = useState<any>(null);
+  const [reviewRefreshedAt, setReviewRefreshedAt] = useState<Date | null>(null);
   const [loading, setLoading]   = useState(false);
   const [filter, setFilter]     = useState<string>("All");
   const [fetched, setFetched]     = useState(false);
@@ -58,6 +70,7 @@ export default function HoldingsReviewPage() {
     setLoading(true);
     try {
       const d = await apiFetch(`/api/v1/holdings/review?refresh=${refresh}`).then(r => r.json());
+      if (refresh) setReviewRefreshedAt(new Date());
       setData(d);
       setFetched(true);
     } finally { setLoading(false); }
@@ -78,13 +91,16 @@ export default function HoldingsReviewPage() {
         </div>
         <div className="flex items-center gap-3">
           {data?.cached_at && (
-            <p className="text-xs text-gray-400">Last run: {new Date(data.cached_at).toLocaleString()}</p>
+            <p className="text-xs text-gray-400">Last run: {fmtRefreshTime(new Date(data.cached_at))}</p>
           )}
           <button onClick={() => fetchReview(true)} disabled={loading}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             {loading ? "Analyzing…" : "Refresh"}
           </button>
+          {reviewRefreshedAt && (
+            <span className="text-xs text-gray-400">Updated {fmtRefreshTime(reviewRefreshedAt)}</span>
+          )}
         </div>
       </div>
 

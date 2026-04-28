@@ -41,7 +41,8 @@ def fetch_technicals(ticker: str) -> dict:
     avg_gain = gain.ewm(com=13, adjust=False).mean()
     avg_loss = loss.ewm(com=13, adjust=False).mean()
     rs  = avg_gain / avg_loss.replace(0, float("nan"))
-    rsi = float(100 - (100 / (1 + rs)).iloc[-1])
+    rsi_raw = float((100 - (100 / (1 + rs))).iloc[-1])
+    rsi = rsi_raw if not (rsi_raw != rsi_raw) else 50.0  # NaN check; default to neutral 50
 
     def rsi_label(r: float) -> str:
         if r >= 70: return "overbought"

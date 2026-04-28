@@ -3,8 +3,11 @@ Price enrichment service using yfinance.
 - Checks price_cache first (TTL = 24h)
 - Batch fetches stale/missing tickers
 - Skips fund_nontickered and fund_cusip asset types
+- Skips non-ticker strings (fund display names, CUSIPs, proxy labels)
 - Returns dict of ticker -> price data
 """
+import re
+import math
 import yfinance as yf
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
@@ -14,12 +17,23 @@ TTL_HOURS = 24
 
 SKIP_ASSET_TYPES = {"fund_nontickered", "fund_cusip"}
 
+CUSIP_RE       = re.compile(r'^[A-Z0-9]{9}$')
+VALID_TICKER_RE = re.compile(r'^[A-Z]{1,5}(-[A-Z]{1,2})?$|^[A-Z]{5}X$')
+
+def is_valid_ticker(t: str) -> bool:
+    if not t or ' ' in t:
+        return False
+    if CUSIP_RE.match(t):
+        return False
+    if len(t) > 6:
+        return False
+    return bool(VALID_TICKER_RE.match(t))
+
 
 def _is_stale(updated_at: datetime | None) -> bool:
     if updated_at is None:
         return True
     now = datetime.now(timezone.utc)
-    # Handle naive datetimes stored by SQLite
     if updated_at.tzinfo is None:
         updated_at = updated_at.replace(tzinfo=timezone.utc)
     return (now - updated_at) > timedelta(hours=TTL_HOURS)
@@ -40,19 +54,20 @@ def get_prices(tickers: list[str], db: Session,
     lookupable = []
     for t in tickers:
         at = (asset_types or {}).get(t, "etf")
-        if at not in SKIP_ASSET_TYPES:
-            lookupable.append(t)
+        if at in SKIP_ASSET_TYPES:
+            continue
+        if not is_valid_ticker(t):
+            continue
+        lookupable.append(t)
 
     if not lookupable:
         return {}
 
     # Check cache
-    stale    = []
-    cached   = {}
+    stale  = []
+    cached = {}
 
-    existing = db.query(PriceCache).filter(
-        PriceCache.ticker.in_(lookupable)
-    ).all()
+    existing   = db.query(PriceCache).filter(PriceCache.ticker.in_(lookupable)).all()
     cached_map = {p.ticker: p for p in existing}
 
     for ticker in lookupable:
@@ -85,14 +100,13 @@ def _fetch_yfinance(tickers: list[str]) -> dict[str, dict]:
             period="2d",
             auto_adjust=True,
             progress=False,
-            threads=True,
+            threads=False,  # threads=True can crash uvicorn on macOS
         )
 
-        # Also get metadata (sector, name, asset type)
         for ticker in tickers:
             try:
-                info        = yf.Ticker(ticker).info
-                price_data  = _extract_price(data, ticker, len(tickers) > 1)
+                info       = yf.Ticker(ticker).info
+                price_data = _extract_price(data, ticker, len(tickers) > 1)
                 results[ticker] = {
                     "price":          price_data.get("price"),
                     "prev_close":     price_data.get("prev_close"),
@@ -103,14 +117,12 @@ def _fetch_yfinance(tickers: list[str]) -> dict[str, dict]:
                     "currency":       info.get("currency", "USD"),
                 }
             except Exception:
-                # Ticker lookup failed — store minimal entry so we don't retry constantly
                 results[ticker] = {
                     "price": None, "prev_close": None,
                     "day_change_pct": None, "sector": None,
                     "asset_type": "unknown", "name": ticker, "currency": "USD",
                 }
     except Exception:
-        # Full batch failed — return empty, will retry next request
         pass
 
     return results
@@ -127,10 +139,15 @@ def _extract_price(data, ticker: str, multi: bool) -> dict:
         if len(close) >= 2:
             price      = float(close.iloc[-1])
             prev_close = float(close.iloc[-2])
-            change_pct = ((price - prev_close) / prev_close * 100) if prev_close else None
+            # Guard against NaN
+            if math.isnan(price):
+                return {"price": None, "prev_close": None, "day_change_pct": None}
+            change_pct = ((price - prev_close) / prev_close * 100) if prev_close and not math.isnan(prev_close) else None
             return {"price": price, "prev_close": prev_close, "day_change_pct": change_pct}
         elif len(close) == 1:
             price = float(close.iloc[-1])
+            if math.isnan(price):
+                return {"price": None, "prev_close": None, "day_change_pct": None}
             return {"price": price, "prev_close": None, "day_change_pct": None}
     except Exception:
         pass
@@ -140,22 +157,17 @@ def _extract_price(data, ticker: str, multi: bool) -> dict:
 def _classify(info: dict) -> str:
     """Classify asset type from yfinance info dict."""
     qt = (info.get("quoteType") or "").upper()
-    if qt == "ETF":
-        return "etf"
-    if qt == "MUTUALFUND":
-        return "fund"
-    if qt == "EQUITY":
-        return "stock"
-    if qt == "CRYPTOCURRENCY":
-        return "crypto"
-    if qt == "FUTURE":
-        return "futures"
+    if qt == "ETF":        return "etf"
+    if qt == "MUTUALFUND": return "fund"
+    if qt == "EQUITY":     return "stock"
+    if qt == "CRYPTOCURRENCY": return "crypto"
+    if qt == "FUTURE":     return "futures"
     return "other"
 
 
 def _upsert_cache(db: Session, ticker: str, data: dict):
     entry = db.query(PriceCache).filter(PriceCache.ticker == ticker).first()
-    now   = datetime.now(timezone.utc).replace(tzinfo=None)  # store naive UTC
+    now   = datetime.now(timezone.utc).replace(tzinfo=None)
     if entry:
         entry.price          = data.get("price")
         entry.prev_close     = data.get("prev_close")

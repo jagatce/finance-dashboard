@@ -16,9 +16,21 @@ const ACCOUNT_TYPES = [
   { value: "unknown",          label: "Unknown" },
 ];
 
+
+function fmtRefreshTime(d: Date): string {
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 export default function TaxEfficiencyPage() {
   const [taxData, setTaxData]       = useState<any>(null);
   const [loading, setLoading]       = useState(true);
+  const [taxRefreshedAt, setTaxRefreshedAt] = useState<Date | null>(null);
   const [mapping, setMapping]       = useState<Record<string,string>>({});
   const [savingMap, setSavingMap]   = useState(false);
   const [showMapping, setShowMapping] = useState(false);
@@ -32,7 +44,7 @@ export default function TaxEfficiencyPage() {
       const data = await apiFetch("/api/v1/holdings/tax-efficiency").then(r => r.json());
       setTaxData(data);
       setMapping(data.account_types || {});
-    } finally { setLoading(false); }
+    } finally { setTaxRefreshedAt(new Date()); setLoading(false); }
   }
 
   async function saveMapping() {
@@ -70,8 +82,11 @@ export default function TaxEfficiencyPage() {
         <button onClick={fetchTax}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-md hover:bg-gray-100">
           <RefreshCw className="w-4 h-4" /> Refresh
-        </button>
-      </div>
+          </button>
+          {taxRefreshedAt && (
+            <span className="text-xs text-gray-400">Updated {fmtRefreshTime(taxRefreshedAt)}</span>
+          )}
+        </div>
 
       {taxData?.error ? (
         <div className="text-center py-16 text-gray-400 text-sm">{taxData.error}</div>

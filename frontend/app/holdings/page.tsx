@@ -70,6 +70,17 @@ function SortIcon({ field, sortField, sortDir }: { field: string; sortField: str
   return <span className="text-indigo-500 ml-1">{sortDir === "desc" ? "↓" : "↑"}</span>;
 }
 
+
+function fmtRefreshTime(d: Date): string {
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 export default function HoldingsPage() {
   const [positions, setPositions]   = useState<Position[]>([]);
   const [sortField, setSortField]   = useState<string>("gain_dollar");
@@ -79,6 +90,7 @@ export default function HoldingsPage() {
   const [loading, setLoading]       = useState(true);
   const [uploading, setUploading]   = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [pricesRefreshedAt, setPricesRefreshedAt] = useState<Date | null>(null);
   const [uploadMsg, setUploadMsg]   = useState<string | null>(null);
   const [accountId, setAccountId]   = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -170,11 +182,17 @@ export default function HoldingsPage() {
   async function handleRefreshPrices() {
     setRefreshing(true);
     try {
-      const res  = await apiFetch("/api/v1/holdings/prices/refresh");
+      // Call backend directly to bypass Next.js proxy 30s timeout
+      const token = typeof window !== "undefined" ? sessionStorage.getItem("fineos_token") : null;
+      const res  = await fetch("http://localhost:8000/api/v1/holdings/prices/refresh", {
+        headers: { ...(token ? { "x-auth-token": token } : {}) },
+        signal: AbortSignal.timeout(10 * 60 * 1000), // 10 min timeout
+      });
       const data = await res.json();
       setUploadMsg(`Refreshed prices for ${data.refreshed} tickers`);
+      setPricesRefreshedAt(new Date());
       await load();
-    } catch { setUploadMsg("Price refresh failed"); }
+    } catch { setUploadMsg("Price refresh failed"); setPricesRefreshedAt(new Date()); }
     setRefreshing(false);
   }
 
@@ -184,14 +202,19 @@ export default function HoldingsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Holdings</h1>
-        <button
-          onClick={handleRefreshPrices}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-        >
-          <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
-          Refresh Prices
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefreshPrices}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
+            Refresh Prices
+          </button>
+          {pricesRefreshedAt && (
+            <span className="text-xs text-gray-400">Updated {fmtRefreshTime(pricesRefreshedAt)}</span>
+          )}
+        </div>
       </div>
 
       {/* Account filter */}

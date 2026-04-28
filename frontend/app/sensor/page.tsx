@@ -121,6 +121,17 @@ function timeAgo(iso: string | null): string {
   return `${days}d ago`;
 }
 
+
+function fmtRefreshTime(d: Date): string {
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 export default function SensorPage() {
   const [tab, setTab]                   = useState<"portfolio" | "research">("portfolio");
   const [portfolioTickers, setPortfolioTickers] = useState<WaferRow[]>([]);
@@ -128,6 +139,7 @@ export default function SensorPage() {
   const [analysisMap, setAnalysisMap]   = useState<Record<string, WaferRow>>({});
   const [analyzing, setAnalyzing]       = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
+  const [sensorRefreshedAt, setSensorRefreshedAt] = useState<Date | null>(null);
   const [newTicker, setNewTicker]       = useState("");
   const [adding, setAdding]             = useState(false);
   const [msg, setMsg]                   = useState<string | null>(null);
@@ -213,9 +225,10 @@ export default function SensorPage() {
       const ok   = data.refreshed?.length ?? 0;
       const fail = data.failed?.length ?? 0;
       const total = data.total ?? ok + fail;
+      setSensorRefreshedAt(new Date());
       setMsg(`✓ Refreshed ${ok}/${total} tickers${fail > 0 ? ` (${fail} failed)` : ""}`);
       await load();
-    } catch { setMsg("Refresh all failed — request may have timed out"); }
+    } catch { setSensorRefreshedAt(new Date()); setMsg("Refresh all failed — request may have timed out"); }
     setRefreshingAll(false);
   }
 
@@ -268,14 +281,20 @@ export default function SensorPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Claude Sensor</h1>
-        <button
-          onClick={handleRefreshAll}
-          disabled={refreshingAll || loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-        >
-          <RefreshCw size={13} className={refreshingAll ? "animate-spin" : ""} />
-          {refreshingAll ? "Refreshing…" : "Refresh All"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefreshAll}
+            disabled={refreshingAll || loading}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={refreshingAll ? "animate-spin" : ""} />
+            {refreshingAll ? "Refreshing…" : "Refresh All"}
+          </button>
+          {sensorRefreshedAt && (
+            <span className="text-xs text-gray-400">Updated {fmtRefreshTime(sensorRefreshedAt)}</span>
+          )}
+        </div>
+
       </div>
 
       {/* Tabs */}

@@ -6,6 +6,7 @@ Portfolio tickers come from holdings table (no separate storage).
 """
 import re
 import json
+import math
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -19,6 +20,13 @@ router = APIRouter(prefix="/api/v1/sensor", tags=["sensor"])
 
 CUSIP_RE = re.compile(r'^[A-Z0-9]{9}$')
 VALID_TICKER_RE = re.compile(r'^[A-Z]{1,5}(-[A-Z]{1,2})?$|^[A-Z]{5}X$')
+
+def clean(v):
+    """Return None if v is NaN or Infinity, otherwise return v."""
+    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+        return None
+    return v
+
 
 def is_valid_ticker(t: str) -> bool:
     if not t:
@@ -138,10 +146,10 @@ def list_all_sensor_tickers(
             "ticker":       r.ticker,
             "signal":       r.signal,
             "health_score": r.health_score,
-            "price":        (pr.price if pr else None) or tech.get("price"),
-            "ema200":       tech.get("ema200"),
-            "delta_ema":    tech.get("delta_ema"),
-            "rsi":          tech.get("rsi"),
+            "price":        clean((pr.price if pr else None) or tech.get("price")),
+            "ema200":       clean(tech.get("ema200")),
+            "delta_ema":    clean(tech.get("delta_ema")),
+            "rsi":          clean(tech.get("rsi")),
             "rsi_label":    tech.get("rsi_label"),
             "macd_label":   tech.get("macd_label"),
             "name":         tech.get("fundamentals", {}).get("name") or (pr.name if pr else r.ticker),

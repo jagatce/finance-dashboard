@@ -33,6 +33,16 @@ const ALLOC_COLORS = [
   "bg-emerald-500", "bg-amber-500", "bg-rose-500", "bg-gray-400",
 ];
 
+function fmtRefreshTime(d: Date): string {
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 export default function AnalysisPage() {
   const [analysis, setAnalysis]       = useState<Analysis | null>(null);
   const [refreshedAt, setRefreshedAt] = useState<string | null>(null);
@@ -83,7 +93,7 @@ export default function AnalysisPage() {
           <h1 className="text-2xl font-bold text-gray-900">AI Analysis</h1>
           {refreshedAt && (
             <p className="text-sm text-gray-500 mt-0.5">
-              Last refreshed {new Date(refreshedAt).toLocaleString()}
+              Last refreshed {fmtRefreshTime(new Date(refreshedAt))}
             </p>
           )}
         </div>
