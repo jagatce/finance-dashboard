@@ -239,6 +239,58 @@ def delete_account_holdings(
     return {"deleted": deleted, "account_id": account_id}
 
 
+
+
+@router.post("/cost-basis/patch")
+def patch_cost_basis(
+    account_id: str = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_auth),
+):
+    """
+    Patch cost_basis_per_share on existing holdings from a CSV file.
+    CSV format: Symbol, Shares, Average Cost
+    Only updates — never inserts or deletes positions.
+    """
+    import csv, io
+    content = file.file.read().decode("utf-8-sig")
+    reader  = csv.DictReader(io.StringIO(content))
+
+    updated = 0
+    skipped = []
+    for row in reader:
+        symbol   = (row.get("Symbol") or "").strip().upper()
+        avg_cost = None
+        for col in ("Average Cost", "Cost", "Avg Cost", "avg_cost"):
+            val = row.get(col)
+            if val and val.strip() and val.strip() != "—":
+                try:
+                    avg_cost = float(val.replace(",", "").replace("$", ""))
+                except ValueError:
+                    pass
+                break
+
+        if not symbol or avg_cost is None:
+            skipped.append(symbol or "unknown")
+            continue
+
+        holding = db.query(Holding).filter(
+            Holding.account_id == account_id,
+            Holding.ticker == symbol
+        ).first()
+
+        if not holding:
+            skipped.append(f"{symbol} (not found)")
+            continue
+
+        holding.cost_basis_per_share = avg_cost
+        holding.total_cost_basis     = round(avg_cost * float(holding.shares), 2) if holding.shares else None
+        updated += 1
+
+    db.commit()
+    return {"updated": updated, "skipped": skipped}
+
 @router.get("/tax-efficiency")
 def get_tax_efficiency(db: Session = Depends(get_db), _: str = Depends(require_auth)):
     """Compute tax efficiency score and recommendations based on holdings."""
