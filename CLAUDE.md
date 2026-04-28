@@ -865,3 +865,72 @@ with:
 - Vanguard Roth IRA: no CSV export available yet
 - Ally IRA: cash balance ($7,305) not included as holding position
 - price_cache refresh needed after import to get live prices on new tickers
+
+## Robinhood Cost Basis — v1.0.3
+
+### Problem
+Robinhood PDF statements don't include cost basis. Import price was used as proxy,
+showing 0% gain on all positions.
+
+### Solution
+POST /api/v1/holdings/cost-basis/patch endpoint:
+- Accepts account_id + CSV file (Symbol, Shares, Average Cost)
+- Updates cost_basis_per_share and total_cost_basis on existing holdings
+- Never inserts or deletes — patch only
+
+### Cost basis CSV location
+data/holdings/robinhood_individual_investment/robinhood_cost_basis.csv
+Source: Robinhood app positions view (copy/paste into CSV)
+Last updated: Apr 2026
+
+### Positions with unavailable cost basis (transferred in)
+AAPL, GOOG, GOOGL, BAC — show null cost_basis, no gain/loss displayed
+
+### To update cost basis after new positions
+1. Copy updated data from Robinhood app positions view
+2. Update robinhood_cost_basis.csv
+3. Call POST /api/v1/holdings/cost-basis/patch with the file
+   OR re-run via /import page once we wire it into the UI
+
+## Current Stable State — v1.0.3 (April 28, 2026)
+
+### Git
+Branch: main
+Latest tag: v1.0.3-cost-basis
+Remote: origin (GitHub) — fully in sync
+
+### Tag history
+v1.0.0-folder-import  — folder import, /import page, scanner, auto-categorize
+v1.0.1-parsers        — all PDF parsers (Vanguard, Ally, Empower, BPAS, Robinhood rewrite)  
+v1.0.2-holdings-live  — live price_cache across all holdings endpoints, Betterment/M1 fix
+v1.0.3-cost-basis     — Robinhood cost basis patch endpoint + CSV
+
+### What is fully working
+- /import page — scan, dedup by SHA256, auto-categorize, re-import
+- All 22 files importing: 10 spending + 15 holdings files
+- 78 transactions, 27 income rows, 185 holdings positions across 15 accounts
+- Live price_cache used on /holdings, /summary, /tax-efficiency, /review
+- Cost basis: Fidelity ✅, Betterment ✅, M1 ✅, Robinhood Individual ✅ (patched)
+- account_name shown everywhere (no more UUIDs in UI)
+- BofA income correctly routed to income_transactions
+- Isolation boundaries preserved: spending/holdings/balances are independent islands
+
+### Known gaps (not blocking, future work)
+- Etrade SNPS, Personal Capital SIP — folders exist, no files provided yet
+- Vanguard Roth IRA — no CSV export available
+- Ally IRA cash balance ($7,305) not imported as holding
+- Robinhood IRA (7 positions) — cost basis not patched yet
+- Cost basis patch not wired into /import UI — currently requires curl
+- Robinhood AAPL/GOOG/GOOGL/BAC — cost basis unavailable (transferred in)
+
+### Data backup tables (in finance.db)
+_bak_transactions, _bak_income_entries, _bak_import_batches,
+_bak_holdings, _bak_income_transactions
+Restore command in CLAUDE.md "Data Backup" section above.
+Drop when folder import is fully verified stable.
+
+### Next session suggestions
+1. Wire cost basis patch into /import page UI
+2. Add Robinhood IRA cost basis (same process as individual)
+3. Drop _bak_ tables once confident in folder import
+4. Test Etrade/Personal Capital when files available
