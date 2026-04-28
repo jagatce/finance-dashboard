@@ -110,7 +110,7 @@
 - `folder_path` — absolute path to subfolder on disk
 
 ### holdings
-- `account_id` — plain string (normalized account name), NO FK constraint
+- `account_id` — plain string (account UUID from accounts table), NO FK constraint enforced
 - `yfinance_ticker` — may be None (fund_nontickered), CUSIP (fund_cusip), or valid ticker
 - `asset_type` — fund_nontickered | fund_cusip | stock | etf | mutual_fund | crypto | etc.
 
