@@ -41,6 +41,7 @@ const nav = [
     items: [
       { href: "/insurance", label: "Insurance", icon: Shield },
       { href: "/import",   label: "Import",    icon: Upload },
+      { href: "/futures",  label: "Futures",   icon: TrendingUp },
       { href: "/cashflow", label: "Cash Flow", icon: TrendingUp },
       { href: "/forecast",     label: "Forecast",    icon: TrendingUp },
       { href: "/projections", label: "Projections", icon: TrendingUp },
