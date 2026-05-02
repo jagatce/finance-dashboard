@@ -134,6 +134,18 @@ POST       /api/v1/mortgage/payment/add
 DELETE     /api/v1/mortgage/payment/{id}
 ```
 
+### Futures
+```
+GET/POST   /api/v1/futures/import
+GET        /api/v1/futures/imports
+DELETE     /api/v1/futures/imports/{id}
+GET        /api/v1/futures/summary
+GET        /api/v1/futures/daily
+GET        /api/v1/futures/instruments
+GET        /api/v1/futures/top-trades
+GET        /api/v1/futures/psychology
+```
+
 ### Import
 ```
 GET        /api/v1/import/scan
@@ -153,6 +165,8 @@ hsa_snapshots, income_entries, reviews
 **Holdings island:** holdings, price_cache, holdings_analysis, holdings_review_cache
 
 **Cash Flow island:** income_transactions, import_batches
+
+**Futures island:** futures_trades, futures_import_batches, futures_daily_summary, futures_monthly_summary
 
 **Sensor island:** watchlist, ticker_analysis
 
@@ -191,6 +205,7 @@ read from or write to each other's tables. See `docs/DATA_MODEL.md` for details.
 /holdings/tax-efficiency      — Asset location score
 /sensor                       — Claude Sensor (Portfolio + Research tabs)
 /sensor/[ticker]              — Ticker drill-down
+/futures                     — 5 tabs: Summary, Daily, Top Trades, Psychology, Import
 /cashflow                     — 5 tabs: Spending, Income, Savings Rate, Recurring, Monthly Review
 /forecast                     — 12-month cash flow projection
 /projections                  — 10-year NW projection (3 scenarios)
@@ -204,7 +219,7 @@ read from or write to each other's tables. See `docs/DATA_MODEL.md` for details.
 - Assets: `/accounts/category/cash|taxable|retirement|hsa|alternative|manual|real_estate`
 - Liabilities: `/accounts/category/credit_card|loan`
 - Holdings: `/holdings`, `/holdings/analysis`, `/holdings/review`, `/holdings/tax-efficiency`
-- Planning: `/cashflow`, `/forecast`, `/projections`, `/mortgage`
+- Planning: `/futures`, `/cashflow`, `/forecast`, `/projections`, `/mortgage`
 - Claude Sensor: `/sensor`
 - System: `/import`, `/backup`, `/settings`
 - Footer: Lock button (clears token, redirects to `/login`)
@@ -244,8 +259,8 @@ Folder name = `_normalize(account.name)`. See `docs/PARSERS.md`.
 - Write code directly to the filesystem using cat, heredoc, or python3 patch scripts
 - No file attachments — everything goes through the terminal
 
-## Current Stable State — v1.0.5
-- Branch: main | Tag: v1.0.5-sensor-timestamps | Remote: in sync
+## Current Stable State — v1.1.0
+- Branch: main | Tag: v1.1.0-futures | Remote: in sync
 - All 22 files importing: 10 spending + 15 holdings files
 - 78 transactions, 27 income rows, 185 holdings positions across 15 accounts
 - Live price_cache on all holdings endpoints
@@ -253,6 +268,7 @@ Folder name = `_normalize(account.name)`. See `docs/PARSERS.md`.
 
 ### Tag history
 ```
+v1.1.0-futures            — Futures trading dashboard (PDF import, summary, daily, top trades, psychology)
 v1.0.5-sensor-timestamps  — NaN/CUSIP fixes, refresh timestamps all pages
 v1.0.4-sensor-fix         — sensor Refresh All, route ordering, CUSIP guard
 v1.0.3-cost-basis         — Robinhood cost basis patch endpoint
