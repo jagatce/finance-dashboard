@@ -86,16 +86,14 @@ Get an Anthropic API key at [console.anthropic.com](https://console.anthropic.co
 | Empower | PDF | No | Price and market value extracted from PDF |
 | Robinhood Individual | PDF + CSV | Yes | Monthly statement + cost basis patch |
 | Robinhood IRA | PDF | No | Cost basis patch available via curl |
-| Dell 401k | PDF | No | Nontickered funds kept, no yfinance lookup |
 | Vanguard | CSV | No | Taxable and Roth IRA |
-| BlackDuck / SNPS 401k | PDF | No | BrokerageLink row skipped to avoid double-count |
 
-### Spending
+### Spending credit cards
 | Source | Format |
 |---|---|
-| Chase (Amazon, Freedom) | CSV |
-| American Express (Blue, Delta) | CSV |
-| Bank of America Checking | CSV |
+| Chase  | CSV |
+| American Express  | CSV |
+| Checking accounts | CSV |
 
 ### Futures
 | Broker | Format | Notes |
